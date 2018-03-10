@@ -15,13 +15,12 @@ windows-hidapi: context [
 
 
 	;remian a block for hidapi.h
-	#define MIN(x y) (either a > b [a] [b])
+	#define MIN(x y) (either x > y [y] [x])
 
 	;--extract the short type data from integer!
 	#define LOWORD(param) (param and FFFFh << 16 >> 16)   
 	#define HIWORD(param) (param >> 16)
 
-	;if not define HIDAPI_USE_DDK
 
 	;the hid header files aren't part of the sdk, we have to define
 	;all this stuff here. In C'lookup_functions(). the func pointers
@@ -45,76 +44,71 @@ windows-hidapi: context [
 			pad8  				[integer!]
 			pad9  				[integer!]
 			pad10  				[integer!]
+			pad11  				[integer!]
+			pad12  				[integer!]
+			pad13  				[integer!]
+			pad14  				[integer!]
 	]
 	
 	#import [
-		"winusb.dll" stdcall [
-			WinUsb_GetOverlappedResult: "WinUsb_GetOverlappedResult" [
-			handle							[integer!]
-			overlapped						[overlapped-struct]
-			trans-len						[int-ptr!]
-			wait?							[byte!]
-			return:							[logic!]
-			]
-		]
 		"hid.dll" stdcall [
-			HidD-GetAttributes: "HidD_GetAttributes_" [
-				device [int-ptr!]
-				attrib [HIDD-ATTRIBUTES] ;have been not defined
-				return [logic!]
+			HidD_GetAttributes: "HidD_GetAttributes" [
+				device 		[int-ptr!]
+				attrib 		[HIDD-ATTRIBUTES] ;have been not defined
+				return: 	[logic!]
 			]
-			HidD-GetSerialNumberString: "HidD_GetSerialNumberString_" [
+			HidD_GetSerialNumberString: "HidD_GetSerialNumberString" [
 				handle		[int-ptr!]
 				buffer 		[byte-ptr!]
 				bufferlen 	[integer!]   ;ulong
-				return 		[logic!]
+				return: 	[logic!]
 			]
-			HidD-GetManufacturerString: "HidD_GetManufacturerString_" [
+			HidD_GetManufacturerString: "HidD_GetManufacturerString" [
 				handle		[int-ptr!]
 				buffer 		[byte-ptr!]
 				bufferlen 	[integer!]   ;ulong
-				return 		[logic!]
+				return: 	[logic!]
 			]
-			HidD-GetProductString: "HidD_GetProductString_" [
+			HidD_GetProductString: "HidD_GetProductString" [
 				handle		[int-ptr!]
 				buffer 		[byte-ptr!]
 				bufferlen 	[integer!]   ;ulong
-				return 		[logic!]
+				return: 	[logic!]
 			]
-			HidD-SetFeature: "HidD_SetFeature_" [
-				handle	[int-ptr!]
-				data  	[int-ptr!]
-				length 	[integer!] ;ulong
-				return 	[logic!]
+			HidD_SetFeature: "HidD_SetFeature" [
+				handle		[int-ptr!]
+				data  		[int-ptr!]
+				length 		[integer!] ;ulong
+				return: 	[logic!]
 			]
-			HidD-GetFeature: "HidD_GetFeature_" [
-				handle	[int-ptr!]
-				data  	[int-ptr!]
-				length 	[integer!] ;ulong
-				return 	[logic!]
+			HidD_GetFeature: "HidD_GetFeature" [
+				handle		[int-ptr!]
+				data  		[int-ptr!]
+				length 		[integer!] ;ulong
+				return: 	[logic!]
 			]
-			HidD-GetIndexedString: "HidD_GetIndexedString_" [
+			HidD_GetIndexedString: "HidD_GetIndexedString" [
 				handle			[int-ptr!]
 				string-index	[integer!] ;ulong
 				buffer 			[int-ptr!]
 				bufferlen 		[integer!] ;ulong
-				return 			[logic!]
+				return: 		[logic!]
 			]
-			HidD-GetPreparsedData: "HidD_GetPreparsedData_" [
+			HidD_GetPreparsedData: "HidD_GetPreparsedData" [
 				handle 			[int-ptr!]
 				preparsed-data 	[int-ptr!]
-				return 			[logic!]
+				return: 		[logic!]
 			]
-			HidD-FreePreparsedData: "HidD_FreePreparsedData_" [
+			HidD_FreePreparsedData: "HidD_FreePreparsedData" [
 				preparsed-data 	[int-ptr!]
-				return 			[logic!]
+				return: 		[logic!]
 			]
-			HidP-GetCaps: "HidP_GetCaps_" [
+			HidP_GetCaps: "HidP_GetCaps" [
 				preparsed-data 	[int-ptr!]
 				caps 			[HIDP-CAPS] ;need to check
-				return 			[integer!] ;ulong
+				return: 		[integer!] ;ulong
 			]
-			HidD-SetNumInputBuffers: "HidD_SetNumInputBuffers_" [
+			HidD_SetNumInputBuffers: "HidD_SetNumInputBuffers" [
 				handle			[int-ptr!]
 				number-buffers 	[integer!] ;ulong
 			]
@@ -143,7 +137,7 @@ windows-hidapi: context [
 				return:							[integer!]
 			]
 			LocalFree: "LocalFree" [
-				hMem							[c-string!]
+				hMem							[int-ptr!]
 				return:							[int-ptr!]
 			]
 			WriteFile:	"WriteFile" [
@@ -197,6 +191,13 @@ windows-hidapi: context [
 				Arguments	 					[integer!]
 				return:		 					[integer!]
 		]
+			GetOverlappedResult: "GetOverlappedResult" [
+				hFile							[int-ptr!]
+				lpOverlapped					[overlapped-struct]
+				lpNumberOfBytesTransferred		[int-ptr!]
+				bWait							[logic!]
+				return: 						[integer!]
+			]
 		]
 		"setupapi.dll" stdcall [
 			SetupDiGetClassDevs: "SetupDiGetClassDevsA" [
@@ -217,16 +218,32 @@ windows-hidapi: context [
 			SetupDiGetDeviceInterfaceDetail: "SetupDiGetDeviceInterfaceDetailA" [
 				DeviceInfoSet 					[integer!]
 				DeviceInterfaceData				[dev-interface-data]
-				DeviceInterfaceDetailData		[c-string!]
+				DeviceInterfaceDetailData		[dev-interface-detail]
 				DeviceInterfaceDetailDataSize	[integer!]
 				RequiredSize					[int-ptr!]
-				DeviceInfoData					[integer!]
+				DeviceInfoData					[dev-info-data]
 				return: 						[logic!]
 			]
 			SetupDiDestroyDeviceInfoList: "SetupDiDestroyDeviceInfoList" [
 				handle							[integer!]
 				return: 						[logic!]
 			]
+			SetupDiEnumDeviceInfo: "SetupDiEnumDeviceInfo" [
+				DeviceInfoSet 					[integer!]
+				MemberIndex						[integer!]
+				DeviceInfoData					[dev-info-data]
+				return: 						[logic!]
+			]
+			SetupDiGetDeviceRegistryPropertyA: "SetupDiGetDeviceRegistryPropertyA" [
+				DeviceInfoSet 					[integer!]
+				DeviceInfoData 					[dev-info-data]
+				Property						[integer!]
+				PropertyRegDataType				[int-ptr!]
+				PropertyBuffer					[c-string!]
+				PropertyBufferSize				[integer!]
+				RequiredSize					[int-ptr!]
+				return: 						[logic!]
+		]
 		]
 		
 
@@ -250,6 +267,11 @@ windows-hidapi: context [
 				String 		[c-string!]
 				return: 	[integer!]
 			]
+			strcmp: "strcmp" [
+				Str1 		[c-string!]
+				Str2 		[c-string!]
+				return: 	[integer!]
+			]
 		]
 	]
 
@@ -269,8 +291,8 @@ windows-hidapi: context [
 		last-error-str 			[int-ptr!]
 		last-error-num 			[integer!]
 		read-pending 			[logic!]
-		read-buf 				[byte-ptr!]
-		ol        				[overlapped-struct value] 
+		read-buf 				[c-string!]
+		ol        				[overlapped-struct] 
 	]
 	hid-device-info: alias struct! [
 		path 				[c-string!]
@@ -283,13 +305,13 @@ windows-hidapi: context [
 		interface-number	[integer!]
 		next				[hid-device-info]
 	]
-	guid-struct: alias struct! [
+	guid-struct: alias struct! [     ;--size 16
 		data1									[integer!]
 		data2									[integer!]
 		data3									[integer!]
 		data4									[integer!]
 	]
-	dev-info-data: alias struct! [
+	dev-info-data: alias struct! [    ;--size: 28
 		cbSize									[integer!]
 		ClassGuid								[integer!]
 		pad1									[integer!]
@@ -298,7 +320,7 @@ windows-hidapi: context [
 		DevInst									[integer!]
 		reserved								[integer!]
 	]	
-	dev-interface-data: alias struct! [
+	dev-interface-data: alias struct! [  ;--size: 28
 		cbSize									[integer!]
 		ClassGuid								[integer!]
 		pad1									[integer!]
@@ -307,18 +329,17 @@ windows-hidapi: context [
 		Flags									[integer!]
 		reserved								[integer!]
 	]
-	dev-interface-detail: alias struct! [
+	dev-interface-detail: alias struct! [  ;--size: 8
 		cbSize									[integer!]
 		DevicePath								[c-string!]
 	]
 
 
 	;init hid-device 
-	init-hid-device: func [
-		dev 	[hid-device]
+	new-hid-device: func [
 		return:  	[hid-device]
 	][
-		dev: as hid-device allocate 1
+		dev: as hid-device allocate size? hid-device
 		dev/device-handle: as int-ptr! INVALID-HANDLE-VALUE
 		dev/blocking: true
 		dev/output-report-length: 0
@@ -332,15 +353,13 @@ windows-hidapi: context [
 		return dev
 	]
 
-	init-hid-device: dev
-
 	;--free-hid-device function
 	free-hid-device: func [
 		dev [hid-device]
 	][
 		CloseHandle dev/ol/hEvent
-		CloseHandle dev/device-handle
-		LocalFree 	 last-error-str
+		CloseHandle (as integer! dev/device-handle)
+		LocalFree 	 dev/last-error-str
 		free as byte! dev/read-buf
 		free as byte! dev
 	]
@@ -354,12 +373,19 @@ windows-hidapi: context [
 			msg 	[c-string!]
 	][
 		FormatMessage 4864 null GetLastError 1024 msg 0 null
-		;--et rid of the CR and LF that FormatMessage() sticks at the
+		;--get rid of the CR and LF that FormatMessage() sticks at the
 	   	;--end of the message.
-		
+		ptr: msg 
+		while ptr/1 <> null-byte [
+			if ptr/1 = #"\r" [
+				ptr/1: null-byte
+				break
+			]
+			ptr: ptr + 1
+		]
 		;------
 		LocalFree device/last-error-str
-		device/last-error-str: msg ;--maybe a fault 
+		device/last-error-str: as int-ptr! msg ;--maybe a fault 
 
 	]
 
@@ -380,7 +406,8 @@ windows-hidapi: context [
 			desired-access: GENERIC_WRITE or GENERIC_READ
 		]
 		share-mode: FILE_SHARE_READ or FILE_SHARE_WRITE
-		handle: as int-ptr! CreateFile path desired-access share-mode null 3 FILE_FLAG_OVERLAPPED 0
+		handle: as int-ptr! (CreateFile path desired-access 
+		share-mode null 3 FILE_FLAG_OVERLAPPED 0)
 		return handle
 	]
 
@@ -392,19 +419,20 @@ windows-hidapi: context [
 			res 				[logic!]
 			root				[hid-device-info]
 			cur-dev 			[hid-device-info]
-			devinfo-data 		[dev-info-data]
-			devinterface-data 	[dev-interface-data]
-			devinterface-detail	[dev-interface-detail]
+			devinfo-data 		[dev-info-data value]
+			devinterface-data 	[dev-interface-data value]
+			devinterface-detail	[dev-interface-detail value] 
 			device-info-set		[int-ptr!]
+			InterfaceClassGuid  [guid-struct value]
 			device-index		[integer!]
 			i					[integer!]
 			write-handle 		[int-ptr!]
-			required-size 		[int-ptr!]
+			required-size 		[integer!]
 			attrib 				[HIDD-ATTRIBUTES]
 			str 				[c-string!]
 			tmp 				[hid-device-info]
 			pp-data 			[int-ptr!]
-			caps 				[HIDP-CAPS]
+			caps 				[HIDP-CAPS value]
 			res1				[logic!]
 			nt-res				[integer!]
 			wstr				[int-ptr!]
@@ -413,54 +441,54 @@ windows-hidapi: context [
 			interface-component [c-string!]
 			endptr 				[c-string!]
 			hex-str				[c-string!]
+			driver_name 		[c-string!]
 	][	
 		
-		root: as hid-device-info system/stack/allocate 1
-		cur-dev: as hid-device-info system/stack/allocate 1
+		root: as hid-device-info allocate size? hid-device-info
+		cur-dev: as hid-device-info allocate size? hid-device-info
 		;-- allocate mem for devinfo
-		devinfo-data: as dev-info-data system/stack/allocate 1
-		devinterface-data: as dev-interface-data  system/stack/allocate 1
 		root: null
 		cur-dev: null
-		devinterface-detail: as dev-interface-detail system/stack/allocate 1
 		devinterface-detail: null
 		;--Windows objects for interacting with the driver.
-		InterfaceClassGuid: as guid-struct system/stack/allocate 1
 		;init InterfaceClassGuid
 		InterfaceClassGuid/data1: 4D1E55B2h
-		InterfaceClassGuid/data2: F16F11CFh
-		InterfaceClassGuid/data3: 88CB0011h
-		InterfaceClassGuid/data4: 11000030h
+		InterfaceClassGuid/data2: 11CFF16Fh
+		InterfaceClassGuid/data3: 1100CB88h
+		InterfaceClassGuid/data4: 30000011h
 		;-----------
 		device-info-set: as int-ptr! INVALID-HANDLE-VALUE
 		device-index: 0
 
 		;--Initialize the Windows objects.
-		set-memory as byte-ptr! devinfo-data 0 size? devinfo-data
+		set-memory as byte-ptr! devinfo-data null-byte size? devinfo-data
 		devinfo-data/cbSize: size? dev-info-data
 		devinterface-data/cbSize: size? dev-interface-data
 
 		;--information for all the devices belonging to the HID class.
-		device-info-set: as int-ptr! SetupDiGetClassDevs InterfaceClassGuid null null DIGCF_PRESENT or DIGCF_DEVICEINTERFACE
+		device-info-set: as int-ptr! SetupDiGetClassDevs InterfaceClassGuid null null 
+		(DIGCF_PRESENT or DIGCF_DEVICEINTERFACE)
 		
 		;--Iterate over each device in the HID class, looking for the right one.
-		while [true] [
+		forever [
 			write-handle: as int-ptr! INVALID-HANDLE-VALUE
-			required-size/value: 0
+			required-size: 0
 			attrib: as HIDD-ATTRIBUTES allocate 1
-			res: SetupDiEnumDeviceInterfaces as integer! device-info-set null InterfaceClassGuid device-index devinterface-data
+			res: SetupDiEnumDeviceInterfaces (as integer! device-info-set) 
+			null InterfaceClassGuid device-index devinterface-data
 			if res = false [
 				;-- A return of FALSE from this function means that there are no more devices.
 				break
 			]
 			
-			res: SetupDiGetDeviceInterfaceDetail as integer! device-info-set devinterface-data null 0 required-size 0
+			res: SetupDiGetDeviceInterfaceDetail as integer! device-info-set 
+			devinterface-data null 0 :required-size null
 			
-			devinterface-detail: as dev-interface-detail system/stack/allocate 1
-			devinterface-detail: null
+			devinterface-detail: as dev-interface-detail allocate required-size
 			devinterface-detail/cbSize: size? dev-interface-detail
 			;--Get the detailed data for this device.
-			res: SetupDiGetDeviceInterfaceDetail as integer! device-info-set devinterface-data devinterface-detail required-size null null
+			res: SetupDiGetDeviceInterfaceDetail as integer! device-info-set 
+			devinterface-data devinterface-detail required-size null null
 
 			if res = false [
 				free as byte-ptr! devinterface-detail
@@ -468,7 +496,32 @@ windows-hidapi: context [
 			]
 
 			;--Make sure this device is of Setup Class "HIDClass" and has a driver bound to it.
-			
+			i: 0
+			forever [
+				driver_name: as byte-ptr! system/stack/allocate 256
+				res: SetupDiEnumDeviceInfo (as integer! SetupDiEnumDeviceInfo)
+				i devinfo-data
+				if res = false [
+					free as byte-ptr! devinterface-detail
+					device-index: device-index + 1	
+				]
+
+				res: SetupDiGetDeviceRegistryPropertyA (as integer! device-info-set)
+				devinfo-data 7 null driver_name (size? driver_name) null
+				if res = false [
+					free as byte-ptr! devinterface-detail
+					device-index: device-index + 1	
+				]
+
+				if (strcmp driver_name "HIDClass") = 0 [
+					res: SetupDiGetDeviceRegistryPropertyA (as integer! device-info-set)
+					devinfo-data 9 null driver_name (size? driver_name) null
+					if res [
+						break
+					]
+				]
+				i: i + 1
+			]
 
 			;------------------------
 			
@@ -477,19 +530,18 @@ windows-hidapi: context [
 			
 			;--check validity of write-handle
 			if write-handle = (as int-ptr! INVALID-HANDLE-VALUE) [
-				CloseHandle as integer! write-handle
+				CloseHandle (as integer! write-handle)
 			]
 
 			;--Get the Vendor ID and Product ID for this device.
 			attrib/Size: size? HIDD-ATTRIBUTES
-			HidD-GetAttributes write-handle attrib
+			HidD_GetAttributes write-handle attrib
 
 			if (id = 0) or (attrib/ID = id) [
-				tmp: as hid-device-info system/stack/allocate 1
 				pp-data: null
 				caps: as HIDP-CAPS system/stack/allocate 1
-				wstr: system/stack/allocate 1024
-
+				wstr: as int-ptr! system/stack/allocate 1024
+				tmp: as hid-device-info system/stack/allocate size? hid-device-info
 				;--vid/pid match . create the record
 				either as logic! cur-dev [
 					cur-dev/next: tmp
@@ -499,9 +551,9 @@ windows-hidapi: context [
 				cur-dev: tmp
 
 				;--Get the Usage Page and Usage for this device.
-				res1: HidD-GetPreparsedData write-handle pp-data
+				res1: HidD_GetPreparsedData write-handle pp-data
 				if res1 [
-					nt-res: HidP-GetCaps pp-data caps
+					nt-res: HidP_GetCaps pp-data caps
 					if nt-res = 00110000h [
 						cur-dev/usage: caps/Usage
 					]
@@ -522,16 +574,16 @@ windows-hidapi: context [
 				]
 
 				;--define wstr 
-				wstr: system/stack/allocate 1024
+				;wstr: as int-ptr! system/stack/allocate 1024
     			b: wstr + 255
 				;--serial number
-				res1: HidD-GetSerialNumberString write-handle wstr size? wstr
+				res1: HidD_GetSerialNumberString write-handle wstr size? wstr
 				b/value: b/value and 0000FFFFh or (00000000h << 16)
 				if res1 [
 					cur-dev/serial-number: wcsdup wstr
 				]
 				;--manufacturer string
-				res1: HidD-GetManufacturerString: write-handle wstr size? wstr
+				res1: HidD_GetManufacturerString: write-handle wstr size? wstr
 				b/value: b/value and 0000FFFFh or (00000000h << 16)
 				if res1 [
 					cur-dev/manufacturer-string: wcsdup wstr
@@ -539,7 +591,7 @@ windows-hidapi: context [
 				;-------
 
 				;--product string
-				res1: HidD-GetProductString: write-handle wstr size? wstr
+				res1: HidD_GetProductString write-handle wstr size? wstr
 				b/value: b/value and 0000FFFFh or (00000000h << 16)
 				if res1 [
 					cur-dev/product-string : wcsdup wstr
@@ -582,21 +634,18 @@ windows-hidapi: context [
 		serial-number	[c-string!]
 		return:			[hid-device]
 		/local
-		devs 			[hid-device-info]
-		cur-dev			[hid-device-info]
+		devs 			[hid-device-info value]
+		cur-dev			[hid-device-info value]
 		path-to-open	[c-string!]
-		handle 			[hid-device]
+		handle 			[hid-device value]
 		tmp				[integer!]
 	][
-		devs: as hid-device-info system/stack/allocate 1
-		cur-dev: as hid-device-info system/stack/allocate 1
 		path-to-open: null
-		handle: as hid-device system/stack/allocate 1
 		handle: null
 
 		devs: hid-enumerate id
 		cur-dev: devs 
-		while [as logic! cur-dev] [
+		while [cur-dev <> null] [
 			if cur-dev/id = id [
 				either as logic! serial-number [
 					tmp: wcscmp serial-number cur-dev/serial-number
@@ -654,7 +703,7 @@ windows-hidapi: context [
 		]
 
 		;--set the input report buffer size to 64 reports
-		res: HidD-SetNumInputBuffers dev/device-handle 64
+		res: HidD_SetNumInputBuffers dev/device-handle 64
 		if res = false [
 			register-error dev "HidD_SetNumInputBuffers"
 			free-hid-device dev 
@@ -662,14 +711,14 @@ windows-hidapi: context [
 		]
 
 		;--get the input report length for the device 
-		res: HidD-GetPreparsedData dev/device-handle pp-data
+		res: HidD_GetPreparsedData dev/device-handle pp-data
 		if res = false [
 			register-error dev  "HidD_GetPreparsedData"
 			free-hid-device dev 
 			return null
 		]
 
-		nt-res: HidP-GetCaps pp-data caps
+		nt-res: HidP_GetCaps pp-data caps
 		if (nt-res xor HIDP_STATUS_SUCCESS) <> 0[
 			register-error dev "HidP_GetCaps"
 			HidD_FreePreparsedData pp-data
@@ -691,7 +740,7 @@ windows-hidapi: context [
 		/local 
 			bytes-written	[integer!]
 			res  			[logic!]
-			ol 				[overlapped-struct]
+			ol 				[overlapped-struct value]
 			buf 			[byte-ptr!]
 
 	][
@@ -715,6 +764,16 @@ windows-hidapi: context [
 				]
 			]
 		]
+
+		;--Wait here until the write is done.
+		res: GetOverlappedResult dev/device-handle ol :bytes-written true
+		if res = false [
+			register-error dev  "WriteFile"
+			bytes-written: -1
+			if buf <> data [
+					free as byte-ptr! buf 
+				]
+		]
 		return bytes-written
 	]
 
@@ -725,13 +784,12 @@ windows-hidapi: context [
 		milliseconds	[integer!]
 		return: 		[integer!]
 		/local 
-			bytes-read	[int-ptr!]
+			bytes-read	[integer!]
 			copy-len	[integer!]
 			res 		[logic!]
 			ev 			[integer!] ;---handle
 	][
-		bytes-read: declare int-ptr!
-		bytes-read/value: 0
+		bytes-read: 0
 		copy-len: 	0
 		
 		;--copy the handle for convenience
@@ -741,7 +799,7 @@ windows-hidapi: context [
 			dev/read-pending: true
 			set-memory dev/read-buf (as byte! 0) dev/input-report-length
 			ResetEvent ev 
-			res: ReadFile (as integer! dev/device-handle) dev/read-buf dev/input-report-length bytes-read (as int-ptr! dev/ol)
+			res: ReadFile (as integer! dev/device-handle) dev/read-buf dev/input-report-length :bytes-read (as int-ptr! dev/ol)
 
 			if res = false [
 				if GetLastError <> ERROR_IO_PENDING [
@@ -764,7 +822,7 @@ windows-hidapi: context [
 				]
 			]
 
-			res: WinUsb_GetOverlappedResult dev/device-handle dev/ol bytes-read (as byte! 1)
+			res: GetOverlappedResult dev/device-handle dev/ol :bytes-read true
 			
 
 			;--set pending back to false
@@ -772,17 +830,17 @@ windows-hidapi: context [
 
 			if res and (bytes-read/value > 0) [
 				either dev/read-buf/value = 0 [
-					bytes-read/value: bytes-read - 1
-					either length > bytes-read/value [
-						copy-len: bytes-read/value
+					bytes-read: bytes-read - 1
+					either length > bytes-read [
+						copy-len: bytes-read
 
 					][
 						copy-len: length
 					]
 				][
 					;--copy the whole buffer ,report number and all
-					either length > bytes-read/value [
-						copy-len: bytes-read/value
+					either length > bytes-read [
+						copy-len: bytes-read
 
 					][
 						copy-len: length
@@ -848,14 +906,12 @@ windows-hidapi: context [
 			return: 	[integer!]
 			/local
 				res 			[logic!]
-				bytes-returned	[int-ptr!]
-				ol				[overlapped-struct]
+				bytes-returned	[integer!]
+				ol				[overlapped-struct value]
 		][
-			ol: as overlapped-struct system/stack/allocate 1
-			bytes-returned: declare int-ptr!
 			set-memory  (as byte-ptr! ol) (as byte! 0) (size? ol)
 			res: DeviceIoControl dev/device-handle IOCTL_HID_GET_FEATURE
-			data length data length bytes-returned ol
+			data length data length :bytes-returned ol
 
 			if res = false [
 				if GetLastError <> ERROR_IO_PENDING [
@@ -866,8 +922,8 @@ windows-hidapi: context [
 			]
 
 			;--wait here until the write is done. this makes hid-get-feature-report() synchronous.
-			res: WinUsb_GetOverlappedResult dev/device-handle ol 
-			bytes-returned (as byte! 1)
+			res: GetOverlappedResult dev/device-handle ol 
+			:bytes-returned true
 			if res = false [
 				;--the operation failed
 				register-error dev 	"Send Feature Report GetOverLappedResult"
@@ -878,8 +934,8 @@ windows-hidapi: context [
 	  		;--report ID. The data buffer actually contains one more byte than
 	  		;--bytes_returned.
 
-			bytes-returned/value: bytes-returned/value + 1
-			return bytes-returned/value
+			bytes-returned: bytes-returned + 1
+			return bytes-returned
 		]
 
 		hid-close: func [
@@ -901,7 +957,7 @@ windows-hidapi: context [
 				res [logic!]
 
 		][
-			res: HidD-GetManufacturerString dev/device-handle string 
+			res: HidD_GetManufacturerString dev/device-handle string 
 			((size? byte-ptr!) * MIN(maxlen MAX_STRING_WCHARS))
 			if res = false [
 				register-error dev "HidD_GetManufacturerString"
@@ -919,7 +975,7 @@ windows-hidapi: context [
 				res [logic!]
 
 		][
-			res: HidD-GetProductString dev/device-handle string 
+			res: HidD_GetProductString dev/device-handle string 
 			((size? byte-ptr!) * MIN(maxlen MAX_STRING_WCHARS))
 			if res = false [
 				register-error dev "HidD_GetProductString"
@@ -937,7 +993,7 @@ windows-hidapi: context [
 				res [logic!]
 
 		][
-			res: HidD-GetSerialNumberString dev/device-handle string 
+			res: HidD_GetSerialNumberString dev/device-handle string 
 			((size? byte-ptr!) * MIN(maxlen MAX_STRING_WCHARS))
 			if res = false [
 				register-error dev "HidD_GetSerialNumberString"
@@ -955,7 +1011,7 @@ windows-hidapi: context [
 				res [logic!]
 
 		][
-			res: HidD-GetIndexedString dev/device-handle string 
+			res: HidD_GetIndexedString dev/device-handle string 
 			((size? byte-ptr!) * MIN(maxlen MAX_STRING_WCHARS))
 			if res = false [
 				register-error dev "HidD_GetIndexedString"
