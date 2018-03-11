@@ -356,7 +356,7 @@ windows-hidapi: context [
 		dev/last-error-num: 0
 		dev/read-pending: 0
 		dev/read-buf: null
-		set-memory as byte-ptr! dev/ol as byte! 0 size? dev/ol
+		set-memory as byte-ptr! dev/ol null-byte size? dev/ol
 		dev/ol/hEvent: CreateEvent null 0 0 null
 		return dev
 	]
