@@ -272,6 +272,12 @@ windows-hidapi: context [
 				Str2 		[c-string!]
 				return: 	[integer!]
 			]
+			strncpy: "strncpy" [
+				target 			[c-string!]
+				source 			[c-string!]
+				count 			[integer!]
+				return: 		[c-string!]
+			]
 		]
 	]
 
@@ -566,7 +572,11 @@ windows-hidapi: context [
 				str: devinterface-detail/DevicePath
 				either as logic! (as integer! str) [
 					;len: length? str
-					cur-dev/path: str
+					len: length? str
+
+					cur-dev/path: as c-string! allocate (len + 1)
+					strncpy cur-dev/path str (len + 1)
+					;cur-dev/path/(len + 1): null-byte ???
 					
 				][
 					cur-dev/path: null
@@ -616,8 +626,8 @@ windows-hidapi: context [
 					endptr: declare c-string!
 					hex-str: interface-component + 4
 					endptr: null
-					cur-dev/interface-numberL strtol hex-str endptr/1 16 ;have some problems
-					if endptr = hex-str [
+					cur-dev/interface-numberL strtol hex-str endptr 16 ;have some problems
+					if (as logic! (strcmp endptr hex-str length? endptr) = false) [
 						cur-dev/interface-number: -1
 					]
 					]
@@ -628,6 +638,25 @@ windows-hidapi: context [
 		SetupDiDestroyDeviceInfoList: as integer! device-info-set	
 		return root
 	]
+
+	hid-free-enumeration: func [
+		devs 		[hid-device-info]
+		/local
+			d 		[hid-device-info value]
+			next 	[hid-device-info value]
+	][
+		d: devs 
+		while [as logic! d] [
+			next: d/next
+			free as byte-ptr! d/path
+			free as byte-ptr! d/serial-number
+			free as byte-ptr! d/manufacturer-string
+			free as byte-ptr! d/product-string
+			free as byte-ptr! d
+			d: next 
+		]
+	]
+
 
 	hid-open: func [
 		id 				[integer!] ;vid and pid
