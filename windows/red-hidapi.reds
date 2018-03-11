@@ -111,6 +111,7 @@ windows-hidapi: context [
 			HidD_SetNumInputBuffers: "HidD_SetNumInputBuffers" [
 				handle			[int-ptr!]
 				number-buffers 	[integer!] ;ulong
+				return: 		[logic!]
 			]
 		]
 
@@ -164,6 +165,7 @@ windows-hidapi: context [
 			]
 			CancelIo: "CancelIo" [
 				 hFile 		[int-ptr!]	
+				 return: 	[integer!]
 			]
 			WaitForSingleObject: "WaitForSingleObject" [
 				hHandle                 [integer!]
@@ -627,7 +629,7 @@ windows-hidapi: context [
 					hex-str: interface-component + 4
 					endptr: null
 					cur-dev/interface-numberL strtol hex-str endptr 16 ;have some problems
-					if (as logic! (strcmp endptr hex-str length? endptr) = false) [
+					if (as logic! (strcmp endptr hex-str)) = false [
 						cur-dev/interface-number: -1
 					]
 					]
@@ -705,8 +707,8 @@ windows-hidapi: context [
 		path 		[c-string!]
 		return  	[hid-device]
 		/local
-			dev 	[hid-device]
-			caps	[HIDP-CAPS]
+			dev 	[hid-device value]
+			caps	[HIDP-CAPS value]
 			pp-data	[int-ptr!]
 			res 	[logic!]
 			nt-res 	[integer!]
@@ -757,29 +759,27 @@ windows-hidapi: context [
 		HidD_FreePreparsedData pp-data
 		dev/read-buf: as byte-ptr! allocate dev/input-report-length
 		return dev 
-
-
 	]
 
 	hid-write: func [
 		dev 	[hid-device]
-		data 	[byte-ptr!]
+		data 	[c-string!]
 		length 	[integer!]
 		return: [integer!]
 		/local 
 			bytes-written	[integer!]
 			res  			[logic!]
 			ol 				[overlapped-struct value]
-			buf 			[byte-ptr!]
+			buf 			[c-string!]
 
 	][
-		set-memory as byte-ptr! ol (as byte! 0) (size? ol)	
+		set-memory as byte-ptr! ol null-byte (size? ol)	
 		either length >= dev/output-report-length [
 			buf: data 
 		][
-			buf: as byte-ptr! system/stack/allocate dev/output-report-length
-			copy-memory buf data length
-			set-memory (buf + length) (as byte! 0) (dev/output-report-length - length)
+			buf: as c-string! system/stack/allocate dev/output-report-length
+			copy-memory as byte-ptr! buf as byte-ptr! data length
+			set-memory (as byte-ptr! buf + length) null-byte (dev/output-report-length - length)
 			length: dev/output-report-length
 		]
 		res: WriteFile dev/device-handle buf  length null (as int-ptr! ol)
@@ -788,7 +788,7 @@ windows-hidapi: context [
 			if GetLastError <> ERROR_IO_PENDING [
 				register-error dev "WriteFile"
 				bytes-written: -1
-				if buf <> data [
+				if (as logic! (strcmp buf data)) = true [
 					free as byte-ptr! buf 
 				]
 			]
@@ -799,7 +799,7 @@ windows-hidapi: context [
 		if res = false [
 			register-error dev  "WriteFile"
 			bytes-written: -1
-			if buf <> data [
+			if (as logic! (strcmp buf data)) = true [
 					free as byte-ptr! buf 
 				]
 		]
@@ -826,9 +826,10 @@ windows-hidapi: context [
 		if dev/read-pending = false [
 			;--start an overlapped i/o read
 			dev/read-pending: true
-			set-memory dev/read-buf (as byte! 0) dev/input-report-length
+			set-memory dev/read-buf null-byte dev/input-report-length
 			ResetEvent ev 
-			res: ReadFile (as integer! dev/device-handle) dev/read-buf dev/input-report-length :bytes-read (as int-ptr! dev/ol)
+			res: ReadFile (as integer! dev/device-handle) 
+			dev/read-buf dev/input-report-length :bytes-read (as int-ptr! dev/ol)
 
 			if res = false [
 				if GetLastError <> ERROR_IO_PENDING [
@@ -866,6 +867,8 @@ windows-hidapi: context [
 					][
 						copy-len: length
 					]
+					copy-memory as byte-ptr! data 
+					((as byte-ptr! dev/read-buf) + 1) copy-len
 				][
 					;--copy the whole buffer ,report number and all
 					either length > bytes-read [
@@ -874,7 +877,7 @@ windows-hidapi: context [
 					][
 						copy-len: length
 					]
-					copy-memory data dev/read-buf copy-len
+					copy-memory as byte-ptr! data as byte-ptr! dev/read-buf copy-len
 				]
 			]
 			return copy-len
@@ -882,7 +885,7 @@ windows-hidapi: context [
 
 		hid-read: func [
 			dev 	[hid-device]
-			data 	[byte-ptr!]
+			data 	[c-string!]
 			length	[integer!]
 			return: [integer!]
 			/local
@@ -909,7 +912,7 @@ windows-hidapi: context [
 				a: true
 			]
 			dev/blocking: a 
-			return 0			
+			return 0	;--success		
 		]
 
 		hid-send-feature-report: func [
@@ -930,7 +933,7 @@ windows-hidapi: context [
 
 		hid-get-feature-report: func [
 			dev 		[hid-device]
-			data 		[byte-ptr!]
+			data 		[c-string!]
 			length		[integer!]
 			return: 	[integer!]
 			/local
@@ -938,7 +941,7 @@ windows-hidapi: context [
 				bytes-returned	[integer!]
 				ol				[overlapped-struct value]
 		][
-			set-memory  (as byte-ptr! ol) (as byte! 0) (size? ol)
+			set-memory  (as byte-ptr! ol) null-byte (size? ol)
 			res: DeviceIoControl dev/device-handle IOCTL_HID_GET_FEATURE
 			data length data length :bytes-returned ol
 
@@ -987,7 +990,7 @@ windows-hidapi: context [
 
 		][
 			res: HidD_GetManufacturerString dev/device-handle string 
-			((size? byte-ptr!) * MIN(maxlen MAX_STRING_WCHARS))
+			(2 * MIN(maxlen MAX_STRING_WCHARS))
 			if res = false [
 				register-error dev "HidD_GetManufacturerString"
 				return -1
@@ -1005,7 +1008,7 @@ windows-hidapi: context [
 
 		][
 			res: HidD_GetProductString dev/device-handle string 
-			((size? byte-ptr!) * MIN(maxlen MAX_STRING_WCHARS))
+			(2 * MIN(maxlen MAX_STRING_WCHARS))
 			if res = false [
 				register-error dev "HidD_GetProductString"
 				return -1
@@ -1023,7 +1026,7 @@ windows-hidapi: context [
 
 		][
 			res: HidD_GetSerialNumberString dev/device-handle string 
-			((size? byte-ptr!) * MIN(maxlen MAX_STRING_WCHARS))
+			(2 * MIN(maxlen MAX_STRING_WCHARS))
 			if res = false [
 				register-error dev "HidD_GetSerialNumberString"
 				return -1
