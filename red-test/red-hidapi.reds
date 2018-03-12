@@ -277,7 +277,7 @@ windows-hidapi: context [
 				return: 						[logic!]
 			]	
 			SetupDiGetDeviceInterfaceDetail: "SetupDiGetDeviceInterfaceDetailA" [
-				DeviceInfoSet 					[integer!]
+				DeviceInfoSet 					[int-ptr!]
 				DeviceInterfaceData				[dev-interface-data]
 				DeviceInterfaceDetailData		[dev-interface-detail]
 				DeviceInterfaceDetailDataSize	[integer!]
@@ -417,9 +417,12 @@ windows-hidapi: context [
 		][
 			desired-access: GENERIC_WRITE or GENERIC_READ
 		]
+		
 		share-mode: FILE_SHARE_READ or FILE_SHARE_WRITE
+		probe share-mode
 		handle: as int-ptr! (CreateFile path desired-access 
 		share-mode null 3 FILE_FLAG_OVERLAPPED 0)
+		probe handle 
 		return handle
 	]
 
@@ -431,9 +434,9 @@ windows-hidapi: context [
 			res 				[logic!]
 			root				[hid-device-info]
 			cur-dev 			[hid-device-info]
-			devinfo-data 		[dev-info-data value]
 			devinterface-data 	[dev-interface-data value]
 			devinterface-detail	[dev-interface-detail value] 
+			devinfo-data 		[dev-info-data value]
 			device-info-set		[int-ptr!]
 			InterfaceClassGuid  [guid-struct value]
 			device-index		[integer!]
@@ -486,39 +489,39 @@ windows-hidapi: context [
 			attrib: as HIDD-ATTRIBUTES allocate size? HIDD-ATTRIBUTES
 			res: SetupDiEnumDeviceInterfaces (as integer! device-info-set) 
 			null InterfaceClassGuid device-index devinterface-data 
+			probe ["res="res ]
 			if res = false [
 				;-- A return of FALSE from this function means that there are no more devices.
 				break
 			]
 			probe devinfo-data/cbSize
 				probe devinfo-data/ClassGuid
-				probe 	/DevInst
+				probe 	devinfo-data/DevInst
 				probe devinfo-data/reserved
 				probe "before setup"
-			res: SetupDiGetDeviceInterfaceDetail as integer! device-info-set 
+			res: SetupDiGetDeviceInterfaceDetail  device-info-set 
 			devinterface-data null 0 :required-size null
 			devinterface-detail: as dev-interface-detail allocate required-size
 			devinterface-detail/cbSize: 5
+			probe devinfo-data/cbSize
+				probe devinfo-data/ClassGuid
+				probe 	devinfo-data/DevInst
+				probe devinfo-data/reserved
+				probe "before setup"
 			;--Get the detailed data for this device.
-			res: SetupDiGetDeviceInterfaceDetail as integer! device-info-set 
+			res: SetupDiGetDeviceInterfaceDetail  device-info-set 
 			devinterface-data devinterface-detail required-size null null ;have some mistakes
-			probe as integer! device-info-set
-			probe res 
 			if res = false [
 				free as byte-ptr! devinterface-detail
 				device-index: device-index + 1
 			]
-			probe devinfo-data/cbSize
+			probe ["devinfo-data/cbSize ="devinfo-data/cbSize]
 			;--Make sure this device is of Setup Class "HIDClass" and has a driver bound to it.
 			i: 0
 			forever [
 				probe "ook2"
 				probe devinfo-data/cbSize
-				driver_name: as c-string! system/stack/allocate 256
-				probe devinfo-data/cbSize
-				probe devinfo-data/ClassGuid
-				probe devinfo-data/DevInst
-				probe devinfo-data/reserved
+				driver_name: as c-string! system/stack/allocate 64
 
 				res: SetupDiEnumDeviceInfo (as integer! device-info-set) i devinfo-data
 				probe res 
@@ -546,10 +549,10 @@ windows-hidapi: context [
 			]
 
 			;------------------------
-			
+			probe "okok"
 			;--open a handle to the device 
 			write-handle: open-device devinterface-detail/DevicePath true
-			
+			probe write-handle
 			;--check validity of write-handle
 			if write-handle = (as int-ptr! INVALID-HANDLE-VALUE) [
 				CloseHandle (as integer! write-handle)
@@ -560,8 +563,8 @@ windows-hidapi: context [
 			HidD_GetAttributes write-handle attrib
 			if (id = 0) or (attrib/ID = id) [
 				pp-data: null 
-				wstr: as int-ptr! system/stack/allocate 1024
-				tmp: as hid-device-info system/stack/allocate size? hid-device-info
+				wstr: as int-ptr! system/stack/allocate 256
+				tmp: as hid-device-info system/stack/allocate (size? hid-device-info) / 4
 				;--vid/pid match . create the record
 				either as logic! cur-dev [
 					cur-dev/next: tmp
