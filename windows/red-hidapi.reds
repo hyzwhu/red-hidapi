@@ -389,7 +389,7 @@ windows-hidapi: context [
 	   	;--end of the message.
 		ptr: msg 
 		while [ptr/1 <> null-byte] [
-			if as logic! [ptr/1 = [#"^(13)"] [
+			if [ ptr/1 = [#"^(13)"] ] [
 				ptr/1: null-byte
 				break
 			]
@@ -399,7 +399,6 @@ windows-hidapi: context [
 		LocalFree device/last-error-str
 		device/last-error-str: as int-ptr! msg ;--maybe a fault 
 
-	]
 	]
 
 	;--static handle open_device func
