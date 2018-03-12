@@ -12,6 +12,7 @@ windows-hidapi: context [
 	#define HIDP_STATUS_SUCCESS      		00110000h
 	#define ERROR_IO_PENDING                997
 	#define IOCTL_HID_GET_FEATURE			721298
+	#define INVALID-HANDLE-VALUE			FFFFFFFFh
 
 
 	;remian a block for hidapi.h
@@ -48,6 +49,64 @@ windows-hidapi: context [
 			pad12  				[integer!]
 			pad13  				[integer!]
 			pad14  				[integer!]
+	]
+	;--define struct
+	overlapped-struct: alias struct! [
+		Internal	 							[integer!]
+		InternalHigh 							[integer!]
+		Offset		 							[integer!]
+		OffsetHight  							[integer!]
+		hEvent		 							[integer!]
+	]
+	hid-device: alias struct! [
+		device-handle 			[int-ptr!]
+		blocking 				[logic!]
+		output-report-length 	[integer!]
+		input-report-length 	[integer!]
+		last-error-str 			[int-ptr!]
+		last-error-num 			[integer!]
+		read-pending 			[logic!]
+		read-buf 				[c-string!]
+		ol        				[overlapped-struct] 
+	]
+	hid-device-info: alias struct! [
+		path 				[c-string!]
+		id 					[integer!] ;vendor-id and product-id
+		serial-number 		[c-string!]
+		manufacturer-string [c-string!]
+		product-string 		[c-string!]
+		usage 				[integer!] ;usage-page and usage
+		release-number		[integer!]
+		interface-number	[integer!]
+		next				[hid-device-info]
+	]
+	guid-struct: alias struct! [     ;--size 16
+		data1									[integer!]
+		data2									[integer!]
+		data3									[integer!]
+		data4									[integer!]
+	]
+	dev-info-data: alias struct! [    ;--size: 28
+		cbSize									[integer!]
+		ClassGuid								[integer!]
+		pad1									[integer!]
+		pad2									[integer!]
+		pad3									[integer!]
+		DevInst									[integer!]
+		reserved								[integer!]
+	]	
+	dev-interface-data: alias struct! [  ;--size: 28
+		cbSize									[integer!]
+		ClassGuid								[integer!]
+		pad1									[integer!]
+		pad2									[integer!]
+		pad3									[integer!]
+		Flags									[integer!]
+		reserved								[integer!]
+	]
+	dev-interface-detail: alias struct! [  ;--size: 8
+		cbSize									[integer!]
+		DevicePath								[c-string!]
 	]
 	
 	#import [
@@ -283,69 +342,13 @@ windows-hidapi: context [
 		]
 	]
 
-	;--define struct
-	overlapped-struct: alias struct! [
-		Internal	 							[integer!]
-		InternalHigh 							[integer!]
-		Offset		 							[integer!]
-		OffsetHight  							[integer!]
-		hEvent		 							[integer!]
-	]
-	hid-device: alias struct! [
-		device-handle 			[int-ptr!]
-		blocking 				[logic!]
-		output-report-length 	[integer!]
-		input-report-length 	[integer!]
-		last-error-str 			[int-ptr!]
-		last-error-num 			[integer!]
-		read-pending 			[logic!]
-		read-buf 				[c-string!]
-		ol        				[overlapped-struct] 
-	]
-	hid-device-info: alias struct! [
-		path 				[c-string!]
-		id 					[integer!] ;vendor-id and product-id
-		serial-number 		[c-string!]
-		manufacturer-string [c-string!]
-		product-string 		[c-string!]
-		usage 				[integer!] ;usage-page and usage
-		release-number		[integer!]
-		interface-number	[integer!]
-		next				[hid-device-info]
-	]
-	guid-struct: alias struct! [     ;--size 16
-		data1									[integer!]
-		data2									[integer!]
-		data3									[integer!]
-		data4									[integer!]
-	]
-	dev-info-data: alias struct! [    ;--size: 28
-		cbSize									[integer!]
-		ClassGuid								[integer!]
-		pad1									[integer!]
-		pad2									[integer!]
-		pad3									[integer!]
-		DevInst									[integer!]
-		reserved								[integer!]
-	]	
-	dev-interface-data: alias struct! [  ;--size: 28
-		cbSize									[integer!]
-		ClassGuid								[integer!]
-		pad1									[integer!]
-		pad2									[integer!]
-		pad3									[integer!]
-		Flags									[integer!]
-		reserved								[integer!]
-	]
-	dev-interface-detail: alias struct! [  ;--size: 8
-		cbSize									[integer!]
-		DevicePath								[c-string!]
-	]
-
+	
 
 	;init hid-device 
 	new-hid-device: func [
 		return:  	[hid-device]
+		/local 
+			dev 	[hid-device]
 	][
 		dev: as hid-device allocate size? hid-device
 		dev/device-handle: as int-ptr! INVALID-HANDLE-VALUE
@@ -354,7 +357,7 @@ windows-hidapi: context [
 		dev/input-report-length: 0
 		dev/last-error-str: null
 		dev/last-error-num: 0
-		dev/read-pending: 0
+		dev/read-pending: false
 		dev/read-buf: null
 		set-memory as byte-ptr! dev/ol null-byte size? dev/ol
 		dev/ol/hEvent: CreateEvent null 0 0 null
@@ -368,8 +371,8 @@ windows-hidapi: context [
 		CloseHandle dev/ol/hEvent
 		CloseHandle (as integer! dev/device-handle)
 		LocalFree 	 dev/last-error-str
-		free as byte! dev/read-buf
-		free as byte! dev
+		free as byte-ptr! dev/read-buf
+		free as byte-ptr! dev
 	]
 
 	;--register_error
@@ -380,12 +383,13 @@ windows-hidapi: context [
 			ptr 	[c-string!]
 			msg 	[c-string!]
 	][
+		msg: declare c-string!
 		FormatMessage 4864 null GetLastError 1024 msg 0 null
 		;--get rid of the CR and LF that FormatMessage() sticks at the
 	   	;--end of the message.
 		ptr: msg 
-		while ptr/1 <> null-byte [
-			if ptr/1 = #"\r" [
+		while [ptr/1 <> null-byte] [
+			if as logic! [ptr/1 = [#"^(13)"] [
 				ptr/1: null-byte
 				break
 			]
@@ -395,6 +399,7 @@ windows-hidapi: context [
 		LocalFree device/last-error-str
 		device/last-error-str: as int-ptr! msg ;--maybe a fault 
 
+	]
 	]
 
 	;--static handle open_device func
@@ -606,7 +611,7 @@ windows-hidapi: context [
 				res1: HidD_GetProductString write-handle wstr size? wstr
 				b/value: b/value and 0000FFFFh or (00000000h << 16)
 				if res1 [
-					cur-dev/product-string : wcsdup wstr
+					cur-dev/product-string: wcsdup wstr
 				]
 
 				;--------
@@ -705,7 +710,7 @@ windows-hidapi: context [
 
 	hid-open-path: func [
 		path 		[c-string!]
-		return  	[hid-device]
+		return:  	[hid-device]
 		/local
 			dev 	[hid-device value]
 			caps	[HIDP-CAPS value]
@@ -1054,8 +1059,7 @@ windows-hidapi: context [
 
 		hid-error: func [
 			dev 	[hid-device]
-			/local
-				return: [int-ptr!]
+			return: [int-ptr!]
 		][
 			return dev/last-error-str
 		]
