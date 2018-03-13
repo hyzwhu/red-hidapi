@@ -419,10 +419,8 @@ windows-hidapi: context [
 		]
 		
 		share-mode: FILE_SHARE_READ or FILE_SHARE_WRITE
-		probe share-mode
 		handle: as int-ptr! (CreateFile path desired-access 
 		share-mode null 3 FILE_FLAG_OVERLAPPED 0)
-		probe handle 
 		return handle
 	]
 
@@ -435,7 +433,7 @@ windows-hidapi: context [
 			root				[hid-device-info]
 			cur-dev 			[hid-device-info]
 			devinterface-data 	[dev-interface-data value]
-			devinterface-detail	[dev-interface-detail value] 
+			devinterface-detail	[dev-interface-detail] 
 			devinfo-data 		[dev-info-data value]
 			device-info-set		[int-ptr!]
 			InterfaceClassGuid  [guid-struct value]
@@ -457,6 +455,7 @@ windows-hidapi: context [
 			endptr 				[c-string!]
 			hex-str				[c-string!]
 			driver_name 		[c-string!]
+			buffer 				[c-string!]
 	][	
 		
 		root: as hid-device-info allocate size? hid-device-info
@@ -489,42 +488,28 @@ windows-hidapi: context [
 			attrib: as HIDD-ATTRIBUTES allocate size? HIDD-ATTRIBUTES
 			res: SetupDiEnumDeviceInterfaces (as integer! device-info-set) 
 			null InterfaceClassGuid device-index devinterface-data 
-			probe ["res="res ]
 			if res = false [
 				;-- A return of FALSE from this function means that there are no more devices.
 				break
 			]
-			probe devinfo-data/cbSize
-				probe devinfo-data/ClassGuid
-				probe 	devinfo-data/DevInst
-				probe devinfo-data/reserved
-				probe "before setup"
 			res: SetupDiGetDeviceInterfaceDetail  device-info-set 
 			devinterface-data null 0 :required-size null
 			devinterface-detail: as dev-interface-detail allocate required-size
 			devinterface-detail/cbSize: 5
-			probe devinfo-data/cbSize
-				probe devinfo-data/ClassGuid
-				probe 	devinfo-data/DevInst
-				probe devinfo-data/reserved
-				probe "before setup"
 			;--Get the detailed data for this device.
 			res: SetupDiGetDeviceInterfaceDetail  device-info-set 
 			devinterface-data devinterface-detail required-size null null ;have some mistakes
+			buffer: as c-string! :devinterface-detail/DevicePath
 			if res = false [
 				free as byte-ptr! devinterface-detail
 				device-index: device-index + 1
 			]
-			probe ["devinfo-data/cbSize ="devinfo-data/cbSize]
 			;--Make sure this device is of Setup Class "HIDClass" and has a driver bound to it.
 			i: 0
 			forever [
-				probe "ook2"
-				probe devinfo-data/cbSize
 				driver_name: as c-string! system/stack/allocate 64
 
-				res: SetupDiEnumDeviceInfo (as integer! device-info-set) i devinfo-data
-				probe res 
+				res: SetupDiEnumDeviceInfo (as integer! device-info-set) i devinfo-data 
 				if res = false [
 					free as byte-ptr! devinterface-detail
 					device-index: device-index + 1	
@@ -532,7 +517,6 @@ windows-hidapi: context [
 
 				res: SetupDiGetDeviceRegistryPropertyA (as integer! device-info-set)
 				devinfo-data 7 null driver_name 256 null
-				probe res 
 				if res = false [
 					free as byte-ptr! devinterface-detail
 					device-index: device-index + 1	
@@ -549,10 +533,8 @@ windows-hidapi: context [
 			]
 
 			;------------------------
-			probe "okok"
 			;--open a handle to the device 
-			write-handle: open-device devinterface-detail/DevicePath true
-			probe write-handle
+			write-handle: open-device buffer true
 			;--check validity of write-handle
 			if write-handle = (as int-ptr! INVALID-HANDLE-VALUE) [
 				CloseHandle (as integer! write-handle)
@@ -562,8 +544,10 @@ windows-hidapi: context [
 			attrib/Size: size? HIDD-ATTRIBUTES
 			HidD_GetAttributes write-handle attrib
 			if (id = 0) or (attrib/ID = id) [
-				pp-data: null 
+				probe "hello"
+				pp-data: as int-ptr!  system/stack/allocate 1
 				wstr: as int-ptr! system/stack/allocate 256
+				
 				tmp: as hid-device-info system/stack/allocate (size? hid-device-info) / 4
 				;--vid/pid match . create the record
 				either as logic! cur-dev [
@@ -572,21 +556,21 @@ windows-hidapi: context [
 					root: tmp
 				]
 				cur-dev: tmp
-
 				;--Get the Usage Page and Usage for this device.
 				res1: HidD_GetPreparsedData write-handle pp-data
+				probe res1 
 				if res1 [
 					nt-res: HidP_GetCaps pp-data caps
+					probe "hello2"
 					if nt-res = 00110000h [
 						cur-dev/usage: caps/Usage
 					]
 					HidD_FreePreparsedData pp-data
-
+					probe "hello3"
 				]
-
 				;--fill out the record
 				cur-dev/next: null
-				str: devinterface-detail/DevicePath
+				str: buffer
 				either as logic! (as integer! str) [
 					;len: length? str
 					len: length? str
@@ -599,12 +583,15 @@ windows-hidapi: context [
 					cur-dev/path: null
 					
 				]
+				probe "hello4"
 				;--define wstr 
 				;wstr: as int-ptr! system/stack/allocate 1024
     			b: wstr + 255
 				;--serial number
+				probe "hello4"
 				res1: HidD_GetSerialNumberString write-handle (as byte-ptr! wstr) size? wstr
 				b/value: b/value and 0000FFFFh or (00000000h << 16)
+				probe "hello5"
 				if res1 [
 					cur-dev/serial-number: wcsdup (as byte-ptr! wstr)
 				]
