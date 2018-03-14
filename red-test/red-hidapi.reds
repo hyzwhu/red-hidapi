@@ -456,6 +456,7 @@ windows-hidapi: context [
 			hex-str				[c-string!]
 			driver_name 		[c-string!]
 			buffer 				[c-string!]
+			d 					[c-string!]
 	][	
 		
 		root: as hid-device-info allocate size? hid-device-info
@@ -542,13 +543,16 @@ windows-hidapi: context [
 
 			;--Get the Vendor ID and Product ID for this device.
 			attrib/Size: size? HIDD-ATTRIBUTES
+			probe ["attrib/Size:" attrib/Size]
 			HidD_GetAttributes write-handle attrib
 			if (id = 0) or (attrib/ID = id) [
 				probe "hello"
-				pp-data: as int-ptr!  system/stack/allocate 1
 				wstr: as int-ptr! system/stack/allocate 256
 				
 				tmp: as hid-device-info system/stack/allocate (size? hid-device-info) / 4
+				pp-data: declare int-ptr!
+				d: declare c-string!
+				;pp-data: null
 				;--vid/pid match . create the record
 				either as logic! cur-dev [
 					cur-dev/next: tmp
@@ -556,15 +560,17 @@ windows-hidapi: context [
 					root: tmp
 				]
 				cur-dev: tmp
+				probe "hi"
 				;--Get the Usage Page and Usage for this device.
-				res1: HidD_GetPreparsedData write-handle pp-data
-				probe res1 
+				res1: HidD_GetPreparsedData write-handle pp-data 
 				if res1 [
-					nt-res: HidP_GetCaps pp-data caps
+					nt-res: HidP_GetCaps (as int-ptr! pp-data/value) caps
 					probe "hello2"
+					probe nt-res 
 					if nt-res = 00110000h [
 						cur-dev/usage: caps/Usage
 					]
+					HidD_FreePreparsedData as int-ptr! pp-data/value
 					HidD_FreePreparsedData pp-data
 					probe "hello3"
 				]
@@ -577,26 +583,26 @@ windows-hidapi: context [
 
 					cur-dev/path: as c-string! allocate (len + 1)
 					strncpy cur-dev/path str (len + 1)
+					probe str
 					;cur-dev/path/(len + 1): null-byte ???
 					
 				][
 					cur-dev/path: null
 					
 				]
-				probe "hello4"
 				;--define wstr 
-				;wstr: as int-ptr! system/stack/allocate 1024
+				;wstr: as int-ptr! system/stack/allocate 256
     			b: wstr + 255
 				;--serial number
 				probe "hello4"
-				res1: HidD_GetSerialNumberString write-handle (as byte-ptr! wstr) size? wstr
+				res1: HidD_GetSerialNumberString write-handle (as byte-ptr! wstr) 1024
 				b/value: b/value and 0000FFFFh or (00000000h << 16)
-				probe "hello5"
+				probe ["res1:" res1 ]
 				if res1 [
 					cur-dev/serial-number: wcsdup (as byte-ptr! wstr)
 				]
 				;--manufacturer string
-				res1: HidD_GetManufacturerString write-handle (as byte-ptr! wstr) size? wstr
+				res1: HidD_GetManufacturerString write-handle (as byte-ptr! wstr) 1024
 				b/value: b/value and 0000FFFFh or (00000000h << 16)
 				if res1 [
 					cur-dev/manufacturer-string: wcsdup (as byte-ptr! wstr)
@@ -604,7 +610,7 @@ windows-hidapi: context [
 				;-------
 
 				;--product string
-				res1: HidD_GetProductString write-handle (as byte-ptr! wstr) size? wstr
+				res1: HidD_GetProductString write-handle (as byte-ptr! wstr) 1024
 				b/value: b/value and 0000FFFFh or (00000000h << 16)
 				if res1 [
 					cur-dev/product-string: wcsdup (as byte-ptr! wstr)
