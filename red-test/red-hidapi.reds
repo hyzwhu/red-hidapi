@@ -118,19 +118,19 @@ windows-hidapi: context [
 			]
 			HidD_GetSerialNumberString: "HidD_GetSerialNumberString" [
 				handle		[int-ptr!]
-				buffer 		[byte-ptr!]
+				buffer 		[c-string!]
 				bufferlen 	[integer!]   ;ulong
 				return: 	[logic!]
 			]
 			HidD_GetManufacturerString: "HidD_GetManufacturerString" [
 				handle		[int-ptr!]
-				buffer 		[byte-ptr!]
+				buffer 		[c-string!]
 				bufferlen 	[integer!]   ;ulong
 				return: 	[logic!]
 			]
 			HidD_GetProductString: "HidD_GetProductString" [
 				handle		[int-ptr!]
-				buffer 		[byte-ptr!]
+				buffer 		[c-string!]
 				bufferlen 	[integer!]   ;ulong
 				return: 	[logic!]
 			]
@@ -448,7 +448,7 @@ windows-hidapi: context [
 			caps 				[HIDP-CAPS value]
 			res1				[logic!]
 			nt-res				[integer!]
-			wstr				[int-ptr!]
+			wstr				[c-string!]
 			len 				[integer!]
 			b 					[int-ptr!]
 			interface-component [c-string!]
@@ -547,7 +547,7 @@ windows-hidapi: context [
 			HidD_GetAttributes write-handle attrib
 			if (id = 0) or (attrib/ID = id) [
 				probe "hello"
-				wstr: as int-ptr! system/stack/allocate 256
+				wstr: as c-string! system/stack/allocate 256
 				
 				tmp: as hid-device-info system/stack/allocate (size? hid-device-info) / 4
 				pp-data: declare int-ptr!
@@ -592,26 +592,30 @@ windows-hidapi: context [
 				]
 				;--define wstr 
 				;wstr: as int-ptr! system/stack/allocate 256
-    			b: wstr + 255
+ 
 				;--serial number
 				probe "hello4"
-				res1: HidD_GetSerialNumberString write-handle (as byte-ptr! wstr) 1024
-				b/value: b/value and 0000FFFFh or (00000000h << 16)
+				res1: HidD_GetSerialNumberString write-handle wstr 1024
+				;b/value: b/value and 0000FFFFh or (00000000h << 16)
+				wstr/1021: null-byte
+				wstr/1022: null-byte
 				probe ["res1:" res1 ]
 				if res1 [
 					cur-dev/serial-number: wcsdup (as byte-ptr! wstr)
 				]
 				;--manufacturer string
-				res1: HidD_GetManufacturerString write-handle (as byte-ptr! wstr) 1024
-				b/value: b/value and 0000FFFFh or (00000000h << 16)
+				res1: HidD_GetManufacturerString write-handle  wstr 1024
+				wstr/1021: null-byte
+				wstr/1022: null-byte
 				if res1 [
-					cur-dev/manufacturer-string: wcsdup (as byte-ptr! wstr)
+					cur-dev/manufacturer-string: wcsdup as byte-ptr! wstr
 				]
 				;-------
 
 				;--product string
-				res1: HidD_GetProductString write-handle (as byte-ptr! wstr) 1024
-				b/value: b/value and 0000FFFFh or (00000000h << 16)
+				res1: HidD_GetProductString write-handle wstr 1024
+				wstr/1021: null-byte
+				wstr/1022: null-byte
 				if res1 [
 					cur-dev/product-string: wcsdup (as byte-ptr! wstr)
 				]
