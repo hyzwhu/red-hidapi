@@ -310,7 +310,7 @@ windows-hidapi: context [
 
 		LIBC-file cdecl [
 			wcsdup: "_wcsdup" [
-				strSource   [byte-ptr!]   ;maybe fault
+				strSource   [c-string!]   ;maybe fault
 				return: 	[c-string!]
 			]
 			wcscmp: "wcscmp" [
@@ -338,6 +338,10 @@ windows-hidapi: context [
 				source 			[c-string!]
 				count 			[integer!]
 				return: 		[c-string!]
+			]
+			wprintf: "wprintf" [
+				[variadic]
+				return: 	[integer!]
 			]
 		]
 	]
@@ -452,7 +456,7 @@ windows-hidapi: context [
 			len 				[integer!]
 			b 					[int-ptr!]
 			interface-component [c-string!]
-			endptr 				[c-string!]
+			endptr 				[integer!]
 			hex-str				[c-string!]
 			driver_name 		[c-string!]
 			buffer 				[c-string!]
@@ -461,6 +465,7 @@ windows-hidapi: context [
 		
 		root: as hid-device-info allocate size? hid-device-info
 		cur-dev: as hid-device-info allocate size? hid-device-info
+		hex-str: declare c-string!
 		;-- allocate mem for devinfo
 		root: null
 		cur-dev: null
@@ -489,6 +494,7 @@ windows-hidapi: context [
 			attrib: as HIDD-ATTRIBUTES allocate size? HIDD-ATTRIBUTES
 			res: SetupDiEnumDeviceInterfaces (as integer! device-info-set) 
 			null InterfaceClassGuid device-index devinterface-data 
+			probe device-index
 			if res = false [
 				;-- A return of FALSE from this function means that there are no more devices.
 				break
@@ -506,10 +512,9 @@ windows-hidapi: context [
 				device-index: device-index + 1
 			]
 			;--Make sure this device is of Setup Class "HIDClass" and has a driver bound to it.
+			driver_name: as c-string! system/stack/allocate 64
 			i: 0
 			forever [
-				driver_name: as c-string! system/stack/allocate 64
-
 				res: SetupDiEnumDeviceInfo (as integer! device-info-set) i devinfo-data 
 				if res = false [
 					free as byte-ptr! devinterface-detail
@@ -543,16 +548,12 @@ windows-hidapi: context [
 
 			;--Get the Vendor ID and Product ID for this device.
 			attrib/Size: size? HIDD-ATTRIBUTES
-			probe ["attrib/Size:" attrib/Size]
 			HidD_GetAttributes write-handle attrib
 			if (id = 0) or (attrib/ID = id) [
-				probe "hello"
-				wstr: as c-string! system/stack/allocate 256
-				
-				tmp: as hid-device-info system/stack/allocate (size? hid-device-info) / 4
+				wstr: as c-string! allocate 1024
+				tmp: as hid-device-info allocate size? hid-device-info
 				pp-data: declare int-ptr!
 				d: declare c-string!
-				;pp-data: null
 				;--vid/pid match . create the record
 				either as logic! cur-dev [
 					cur-dev/next: tmp
@@ -560,55 +561,43 @@ windows-hidapi: context [
 					root: tmp
 				]
 				cur-dev: tmp
-				probe "hi"
 				;--Get the Usage Page and Usage for this device.
 				res1: HidD_GetPreparsedData write-handle pp-data 
 				if res1 [
 					nt-res: HidP_GetCaps (as int-ptr! pp-data/value) caps
-					probe "hello2"
-					probe nt-res 
 					if nt-res = 00110000h [
 						cur-dev/usage: caps/Usage
 					]
 					HidD_FreePreparsedData as int-ptr! pp-data/value
 					HidD_FreePreparsedData pp-data
-					probe "hello3"
 				]
 				;--fill out the record
 				cur-dev/next: null
 				str: buffer
 				either as logic! (as integer! str) [
-					;len: length? str
 					len: length? str
-
 					cur-dev/path: as c-string! allocate (len + 1)
-					strncpy cur-dev/path str (len + 1)
-					probe str
-					;cur-dev/path/(len + 1): null-byte ???
-					
+					strncpy cur-dev/path str len
 				][
 					cur-dev/path: null
 					
 				]
-				;--define wstr 
-				;wstr: as int-ptr! system/stack/allocate 256
- 
 				;--serial number
-				probe "hello4"
 				res1: HidD_GetSerialNumberString write-handle wstr 1024
 				;b/value: b/value and 0000FFFFh or (00000000h << 16)
 				wstr/1021: null-byte
 				wstr/1022: null-byte
-				probe ["res1:" res1 ]
-				if res1 [
-					cur-dev/serial-number: wcsdup (as byte-ptr! wstr)
+				either res1 [
+					cur-dev/serial-number: wcsdup wstr
+				][
+					cur-dev/serial-number: "null"
 				]
 				;--manufacturer string
 				res1: HidD_GetManufacturerString write-handle  wstr 1024
 				wstr/1021: null-byte
 				wstr/1022: null-byte
 				if res1 [
-					cur-dev/manufacturer-string: wcsdup as byte-ptr! wstr
+					cur-dev/manufacturer-string: wcsdup wstr
 				]
 				;-------
 
@@ -617,45 +606,43 @@ windows-hidapi: context [
 				wstr/1021: null-byte
 				wstr/1022: null-byte
 				if res1 [
-					cur-dev/product-string: wcsdup (as byte-ptr! wstr)
+					cur-dev/product-string: wcsdup wstr
 				]
-
-				;--------
 
 				;--vid/pid
 				cur-dev/id: attrib/ID
-
 				;--release Number
-				cur-dev/release-number: attrib/VersionNumber
-				
+				cur-dev/release-number: attrib/VersionNumber			
 				;--Interface Number.
 				cur-dev/interface-number: -1
-				if as logic! (as integer! cur-dev/path) [
+				
+				if as logic! cur-dev/path [
 					interface-component: declare c-string!
 					interface-component: strstr cur-dev/path "&mi_"
-					if as logic! (as integer! interface-component)[
-					hex-str: declare c-string!
-					endptr: declare c-string!
+					if as logic! interface-component [
 					hex-str: interface-component + 4
-					endptr: null
-					cur-dev/interface-number strtol hex-str endptr 16 ;have some problems
-					if (as logic! (strcmp endptr hex-str)) = false [
+					endptr: 0
+					cur-dev/interface-number: strtol hex-str (as c-string! :endptr) 16 ;have some problems
+					if (as c-string! endptr) = hex-str [
 						cur-dev/interface-number: -1
 					]
 					]
 				]
 			]
+			CloseHandle (as integer! write-handle)
+			free as byte-ptr! devinterface-detail
+			device-index: device-index + 1	
 		]
 		;close the device information handle
-		SetupDiDestroyDeviceInfoList as integer! device-info-set	
+		SetupDiDestroyDeviceInfoList as integer! device-info-set
 		return root
 	]
 
 	hid-free-enumeration: func [
 		devs 		[hid-device-info]
 		/local
-			d 		[hid-device-info value]
-			next 	[hid-device-info value]
+			d 		[hid-device-info]
+			next 	[hid-device-info]
 	][
 		d: devs 
 		while [as logic! d] [
@@ -668,6 +655,49 @@ windows-hidapi: context [
 			d: next 
 		]
 	]
+
+	; 	hid-open: func [
+	; 	id 				[integer!] ;vid and pid
+	; 	serial-number	[c-string!]
+	; 	return:			[hid-device]
+	; 	/local
+	; 	devs 			[hid-device-info value]
+	; 	cur-dev			[hid-device-info value]
+	; 	path-to-open	[c-string!]
+	; 	handle 			[hid-device value]
+	; 	tmp				[integer!]
+	; ][
+	; 	path-to-open: null
+	; 	handle: null
+
+	; 	devs: hid-enumerate id
+	; 	cur-dev: devs 
+	; 	while [cur-dev <> null] [
+	; 		if cur-dev/id = id [
+	; 			either as logic! serial-number [
+	; 				tmp: wcscmp serial-number cur-dev/serial-number
+	; 				if tmp = 0 [
+	; 					path-to-open: cur-dev/path
+	; 					break
+	; 				]
+	; 			][
+	; 				path-to-open: cur-dev/path
+	; 				break
+	; 			]
+	; 		]
+	; 		cur-dev: cur-dev/next
+	; 	]
+
+	; 	if as logic! path-to-open [
+	; 		;--open the device 
+	; 		handle: hid-open-path path-to-open ;--have not been defined
+	; 	]
+
+	; 	hid-free-enumeration devs  ;--have not been defined
+
+	; 	return handle
+		
+	; ]
 
 
 
