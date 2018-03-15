@@ -36,4 +36,6 @@ while [as logic! cur-dev] [
     probe " "
 ]
 windows-hidapi/hid-free-enumeration devs 
-
+hid-test: declare windows-hidapi/hid-device
+hid-test: windows-hidapi/hid-open 86860 "1687DBC3F859CCFFC36D5F71"
+probe hid-test

@@ -656,48 +656,106 @@ windows-hidapi: context [
 		]
 	]
 
-	; 	hid-open: func [
-	; 	id 				[integer!] ;vid and pid
-	; 	serial-number	[c-string!]
-	; 	return:			[hid-device]
-	; 	/local
-	; 	devs 			[hid-device-info value]
-	; 	cur-dev			[hid-device-info value]
-	; 	path-to-open	[c-string!]
-	; 	handle 			[hid-device value]
-	; 	tmp				[integer!]
-	; ][
-	; 	path-to-open: null
-	; 	handle: null
+		hid-open: func [
+		id 				[integer!] ;vid and pid
+		serial-number	[c-string!]
+		return:			[hid-device]
+		/local
+		devs 			[hid-device-info]
+		cur-dev			[hid-device-info]
+		path-to-open	[c-string!]
+		handle 			[hid-device value]
+		tmp				[integer!]
+	][
+		path-to-open: null
+		handle: null
 
-	; 	devs: hid-enumerate id
-	; 	cur-dev: devs 
-	; 	while [cur-dev <> null] [
-	; 		if cur-dev/id = id [
-	; 			either as logic! serial-number [
-	; 				tmp: wcscmp serial-number cur-dev/serial-number
-	; 				if tmp = 0 [
-	; 					path-to-open: cur-dev/path
-	; 					break
-	; 				]
-	; 			][
-	; 				path-to-open: cur-dev/path
-	; 				break
-	; 			]
-	; 		]
-	; 		cur-dev: cur-dev/next
-	; 	]
+		devs: hid-enumerate id
+		probe "hello"
+		cur-dev: devs 
+		while [cur-dev <> null] [
+			probe "hello2"
+			if cur-dev/id = id [
+				either as logic! serial-number [
+					tmp: wcscmp serial-number cur-dev/serial-number
+					if tmp = 0 [
+						path-to-open: cur-dev/path
+						break
+					]
+				][	
+					probe "hello3"
+					path-to-open: cur-dev/path
+					break
+				]
+			]
+			probe "hello4"
+			cur-dev: cur-dev/next
+		]
 
-	; 	if as logic! path-to-open [
-	; 		;--open the device 
-	; 		handle: hid-open-path path-to-open ;--have not been defined
-	; 	]
+		if as logic! path-to-open [
+			;--open the device 
+			handle: hid-open-path path-to-open ;--have not been defined
+		]
 
-	; 	hid-free-enumeration devs  ;--have not been defined
+		hid-free-enumeration devs  ;--have not been defined
 
-	; 	return handle
+		return handle
 		
-	; ]
+	]
+
+		hid-open-path: func [
+		path 		[c-string!]
+		return:  	[hid-device]
+		/local
+			dev 	[hid-device value]
+			caps	[HIDP-CAPS value]
+			pp-data	[int-ptr!]
+			res 	[logic!]
+			nt-res 	[integer!]
+			buf 	[byte-ptr!]
+	][
+		pp-data: null
+		
+		dev: new-hid-device
+
+		;--open a handle to the device 
+		dev/device-handle: open-device path false
+
+		;--check validity of write-handle
+		if (as integer! dev/device-handle) = INVALID-HANDLE-VALUE [
+			;--unabele to open the device 
+			register-error dev "CreateFile"  ;--have not been defined yet
+			free-hid-device dev 
+			return null
+		]
+
+		;--set the input report buffer size to 64 reports
+		res: HidD_SetNumInputBuffers dev/device-handle 64
+		if res = false [
+			register-error dev "HidD_SetNumInputBuffers"
+			free-hid-device dev 
+			return null
+		]
+
+		;--get the input report length for the device 
+		res: HidD_GetPreparsedData dev/device-handle pp-data
+		if res = false [
+			register-error dev  "HidD_GetPreparsedData"
+			free-hid-device dev 
+			return null
+		]
+
+		nt-res: HidP_GetCaps pp-data caps
+		if (nt-res xor HIDP_STATUS_SUCCESS) <> 0[
+			register-error dev "HidP_GetCaps"
+			HidD_FreePreparsedData pp-data
+		]
+		dev/output-report-length: LOWORD(caps/ReportByteLength)
+		dev/input-report-length: HIWORD(caps/ReportByteLength)
+		HidD_FreePreparsedData pp-data
+		dev/read-buf: as c-string! allocate dev/input-report-length
+		return dev 
+	]
 
 
 
