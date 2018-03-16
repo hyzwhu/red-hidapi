@@ -363,6 +363,7 @@ windows-hidapi: context [
 		dev/last-error-num: 0
 		dev/read-pending: false
 		dev/read-buf: null
+		dev/ol: as overlapped-struct allocate size? overlapped-struct
 		set-memory as byte-ptr! dev/ol null-byte size? dev/ol
 		dev/ol/hEvent: CreateEvent null 0 0 null
 		return dev
@@ -494,7 +495,6 @@ windows-hidapi: context [
 			attrib: as HIDD-ATTRIBUTES allocate size? HIDD-ATTRIBUTES
 			res: SetupDiEnumDeviceInterfaces (as integer! device-info-set) 
 			null InterfaceClassGuid device-index devinterface-data 
-			probe device-index
 			if res = false [
 				;-- A return of FALSE from this function means that there are no more devices.
 				break
@@ -576,7 +576,7 @@ windows-hidapi: context [
 				str: buffer
 				either as logic! (as integer! str) [
 					len: length? str
-					cur-dev/path: as c-string! allocate (len + 1)
+					cur-dev/path: as c-string! allocate (len + 3)
 					strncpy cur-dev/path str len
 				][
 					cur-dev/path: null
@@ -657,24 +657,25 @@ windows-hidapi: context [
 	]
 
 		hid-open: func [
-		id 				[integer!] ;vid and pid
+		vendor-id 		[integer!] ;vid
+		product-id 		[integer!] ;pid			
 		serial-number	[c-string!]
 		return:			[hid-device]
 		/local
 		devs 			[hid-device-info]
 		cur-dev			[hid-device-info]
 		path-to-open	[c-string!]
-		handle 			[hid-device value]
+		handle 			[hid-device]
 		tmp				[integer!]
+		id 				[integer!]
 	][
 		path-to-open: null
 		handle: null
-
+		id: product-id * 65536 + vendor-id
 		devs: hid-enumerate id
-		probe "hello"
 		cur-dev: devs 
 		while [cur-dev <> null] [
-			probe "hello2"
+			probe ["cur-dev/id:" cur-dev/id]
 			if cur-dev/id = id [
 				either as logic! serial-number [
 					tmp: wcscmp serial-number cur-dev/serial-number
@@ -683,12 +684,10 @@ windows-hidapi: context [
 						break
 					]
 				][	
-					probe "hello3"
 					path-to-open: cur-dev/path
 					break
 				]
 			]
-			probe "hello4"
 			cur-dev: cur-dev/next
 		]
 
@@ -698,29 +697,25 @@ windows-hidapi: context [
 		]
 
 		hid-free-enumeration devs  ;--have not been defined
-
 		return handle
-		
 	]
 
 		hid-open-path: func [
 		path 		[c-string!]
 		return:  	[hid-device]
 		/local
-			dev 	[hid-device value]
+			dev 	[hid-device]
 			caps	[HIDP-CAPS value]
-			pp-data	[int-ptr!]
+			pp-data	[integer!]
 			res 	[logic!]
 			nt-res 	[integer!]
 			buf 	[byte-ptr!]
 	][
-		pp-data: null
-		
+		pp-data: 0
 		dev: new-hid-device
-
+		probe dev 
 		;--open a handle to the device 
 		dev/device-handle: open-device path false
-
 		;--check validity of write-handle
 		if (as integer! dev/device-handle) = INVALID-HANDLE-VALUE [
 			;--unabele to open the device 
@@ -728,7 +723,6 @@ windows-hidapi: context [
 			free-hid-device dev 
 			return null
 		]
-
 		;--set the input report buffer size to 64 reports
 		res: HidD_SetNumInputBuffers dev/device-handle 64
 		if res = false [
@@ -736,24 +730,24 @@ windows-hidapi: context [
 			free-hid-device dev 
 			return null
 		]
-
 		;--get the input report length for the device 
-		res: HidD_GetPreparsedData dev/device-handle pp-data
+		res: HidD_GetPreparsedData dev/device-handle :pp-data
 		if res = false [
 			register-error dev  "HidD_GetPreparsedData"
 			free-hid-device dev 
 			return null
 		]
 
-		nt-res: HidP_GetCaps pp-data caps
+		nt-res: HidP_GetCaps as int-ptr! pp-data caps
 		if (nt-res xor HIDP_STATUS_SUCCESS) <> 0[
 			register-error dev "HidP_GetCaps"
-			HidD_FreePreparsedData pp-data
+			HidD_FreePreparsedData as int-ptr! pp-data
 		]
 		dev/output-report-length: LOWORD(caps/ReportByteLength)
 		dev/input-report-length: HIWORD(caps/ReportByteLength)
-		HidD_FreePreparsedData pp-data
+		HidD_FreePreparsedData as int-ptr! pp-data
 		dev/read-buf: as c-string! allocate dev/input-report-length
+		probe ["dev:" dev ]
 		return dev 
 	]
 
