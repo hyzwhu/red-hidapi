@@ -713,7 +713,6 @@ windows-hidapi: context [
 	][
 		pp-data: 0
 		dev: new-hid-device
-		probe dev 
 		;--open a handle to the device 
 		dev/device-handle: open-device path false
 		;--check validity of write-handle
@@ -747,9 +746,157 @@ windows-hidapi: context [
 		dev/input-report-length: HIWORD(caps/ReportByteLength)
 		HidD_FreePreparsedData as int-ptr! pp-data
 		dev/read-buf: as c-string! allocate dev/input-report-length
-		probe ["dev:" dev ]
 		return dev 
 	]
+
+	hid-write: func [
+		dev 	[hid-device]
+		data 	[c-string!]
+		length 	[integer!]
+		return: [integer!]
+		/local 
+			bytes-written	[integer!]
+			res  			[logic!]
+			ol 				[overlapped-struct value]
+			buf 			[c-string!]
+
+	][
+		set-memory as byte-ptr! ol null-byte (size? ol)	
+		either length >= dev/output-report-length [
+			buf: data 
+		][
+			buf: as c-string! allocate dev/output-report-length
+			copy-memory as byte-ptr! buf as byte-ptr! data length
+			set-memory ((as byte-ptr! buf) + length) null-byte (dev/output-report-length - length)
+			length: dev/output-report-length
+		]
+		res: WriteFile as integer! dev/device-handle as byte-ptr! buf  length null (as int-ptr! ol)
+
+		if res = false [
+			if GetLastError <> ERROR_IO_PENDING [
+				register-error dev "WriteFile"
+				bytes-written: -1
+				if (as logic! (strcmp buf data)) = true [
+					free as byte-ptr! buf 
+				]
+			]
+		]
+
+		;--Wait here until the write is done.
+		res: GetOverlappedResult dev/device-handle ol :bytes-written true
+		if res = false [
+			register-error dev  "WriteFile"
+			bytes-written: -1
+			if (as logic! (strcmp buf data)) = true [
+					free as byte-ptr! buf 
+				]
+		]
+		if (as logic! (strcmp buf data)) = true [
+					free as byte-ptr! buf 
+				]
+		return bytes-written
+	]
+
+	hid-read-timeout: func [
+		dev				[hid-device]
+		data 			[c-string!]
+		length 			[integer!]
+		milliseconds	[integer!]
+		return: 		[integer!]
+		/local 
+			bytes-read	[integer!]
+			copy-len	[integer!]
+			res 		[logic!]
+			ev 			[integer!] ;---handle
+	][
+		bytes-read: 0
+		copy-len: 	0
+		
+		;--copy the handle for convenience
+		ev: dev/ol/hEvent
+		if dev/read-pending = false [
+			;--start an overlapped i/o read
+			dev/read-pending: true
+			set-memory as byte-ptr! dev/read-buf null-byte dev/input-report-length
+			ResetEvent ev 
+			res: ReadFile (as integer! dev/device-handle) 
+			as byte-ptr! dev/read-buf dev/input-report-length :bytes-read (as int-ptr! dev/ol)
+
+			if res = false [
+				if GetLastError <> ERROR_IO_PENDING [
+					;--ReadFile() has failed. Clean up and return error.
+					CancelIo dev/device-handle
+					dev/read-pending: false
+					if res = false [
+						register-error dev "GetOverlappedResult"
+						return -1
+					]
+				]
+			]
+		]
+			if milliseconds >= 0 [
+				;--see if there is any data yet
+				res: as logic! (WaitForSingleObject ev milliseconds)
+				if res = true [
+					;--there was no data this time.return zero bytes available
+					return 0
+				]
+			]
+
+			res: GetOverlappedResult dev/device-handle dev/ol :bytes-read true
+			
+
+			;--set pending back to false
+			dev/read-pending: false
+
+			if res and (bytes-read > 0) [
+				either dev/read-buf/1 = null-byte [
+					bytes-read: bytes-read - 1
+					either length > bytes-read [
+						copy-len: bytes-read
+
+					][
+						copy-len: length
+					]
+					copy-memory as byte-ptr! data 
+					((as byte-ptr! dev/read-buf) + 1) copy-len
+				][
+					;--copy the whole buffer ,report number and all
+					either length > bytes-read [
+						copy-len: bytes-read
+
+					][
+						copy-len: length
+					]
+					copy-memory as byte-ptr! data as byte-ptr! dev/read-buf copy-len
+				]
+			]
+			if res = false [
+						register-error dev "GetOverlappedResult"
+						return -1
+					]
+			return copy-len
+		]
+
+	hid-read: func [
+			dev 	[hid-device]
+			data 	[c-string!]
+			length	[integer!]
+			return: [integer!]
+			/local
+				a 	[integer!]
+				b 	[integer!]
+		][
+			either dev/blocking = true [
+				a: -1 
+			][
+				a: 0
+			]   ;compile error
+			b: hid-read-timeout dev data length a 
+			return b
+		]
+
+	
 
 
 

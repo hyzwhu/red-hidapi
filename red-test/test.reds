@@ -40,4 +40,4 @@ hid-test: declare windows-hidapi/hid-device
 s: declare c-string!
 s: #u16 "1687DBC3F859CCFFC36D5F71"
 hid-test: windows-hidapi/hid-open 0000534Ch 00000001h s 
-probe hid-test
+probe ["hid-test:"hid-test]
