@@ -462,6 +462,7 @@ windows-hidapi: context [
 			driver_name 		[c-string!]
 			buffer 				[c-string!]
 			d 					[c-string!]
+			len1 				[integer!]
 	][	
 		
 		root: as hid-device-info allocate size? hid-device-info
@@ -576,8 +577,10 @@ windows-hidapi: context [
 				str: buffer
 				either as logic! (as integer! str) [
 					len: length? str
-					cur-dev/path: as c-string! allocate (len + 3)
+					len1: len + 1
+					cur-dev/path: as c-string! allocate len1
 					strncpy cur-dev/path str len
+					cur-dev/path/len1: null-byte
 				][
 					cur-dev/path: null
 					
@@ -675,7 +678,6 @@ windows-hidapi: context [
 		devs: hid-enumerate id
 		cur-dev: devs 
 		while [cur-dev <> null] [
-			probe ["cur-dev/id:" cur-dev/id]
 			if cur-dev/id = id [
 				either as logic! serial-number [
 					tmp: wcscmp serial-number cur-dev/serial-number
@@ -878,23 +880,23 @@ windows-hidapi: context [
 			return copy-len
 		]
 
-	hid-read: func [
-			dev 	[hid-device]
-			data 	[c-string!]
-			length	[integer!]
-			return: [integer!]
-			/local
-				a 	[integer!]
-				b 	[integer!]
-		][
-			either dev/blocking = true [
-				a: -1 
-			][
-				a: 0
-			]   ;compile error
-			b: hid-read-timeout dev data length a 
-			return b
-		]
+	; hid-read: func [
+	; 		dev 	[hid-device]
+	; 		data 	[c-string!]
+	; 		length	[integer!]
+	; 		return: [integer!]
+	; 		/local
+	; 			a 	[integer!]
+	; 			b 	[integer!]
+	; 	][
+	; 		either dev/blocking = true [
+	; 			a: -1 
+	; 		][
+	; 			a: 0
+	; 		]   ;compile error
+	; 		b: hid-read-timeout dev data length a 
+	; 		return b
+	; 	]
 
 	
 

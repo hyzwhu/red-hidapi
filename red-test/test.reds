@@ -13,7 +13,6 @@ i: declare integer!
 devs: declare windows-hidapi/hid-device-info
 cur-dev: declare windows-hidapi/hid-device-info
 devs: windows-hidapi/hid-enumerate 0 
-probe "hid-enumerate finish"
 cur-dev: devs
 ;--test hid-enumerate
 ; while [as logic! cur-dev] [
