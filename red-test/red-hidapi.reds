@@ -774,12 +774,11 @@ hid: context [
 		either length >= dev/output-report-length [
 			buf: data 
 		][
-			buf: as byte-ptr! allocate dev/output-report-length
+			buf:  allocate dev/output-report-length
 			copy-memory buf data length
 			set-memory (buf + length) null-byte (dev/output-report-length - length)
 			length: dev/output-report-length
 		]
-		buf: data 
 		probe ["dev/out-report-length:"dev/output-report-length]
 		res: WriteFile as integer! dev/device-handle buf  length null (as int-ptr! ol)
 		probe ["res:"res] 
@@ -788,7 +787,7 @@ hid: context [
 				register-error dev "WriteFile"
 				bytes-written: -1
 				if buf <> data  [
-					free as byte-ptr! buf 
+					free buf 
 				]
 			]
 		]
@@ -799,11 +798,11 @@ hid: context [
 			register-error dev  "WriteFile"
 			bytes-written: -1
 			if buf <> data  [
-					free as byte-ptr! buf 
+					free buf 
 				]
 		]
 		if buf <> data  [
-					free as byte-ptr! buf 
+					free buf 
 				]
 		return bytes-written
 	]
