@@ -753,47 +753,51 @@ windows-hidapi: context [
 
 	hid-write: func [
 		dev 	[hid-device]
-		data 	[c-string!]
+		data 	[byte-ptr!]
 		length 	[integer!]
 		return: [integer!]
 		/local 
 			bytes-written	[integer!]
 			res  			[logic!]
 			ol 				[overlapped-struct value]
-			buf 			[c-string!]
+			buf 			[byte-ptr!]
+			i 				[integer!]
 
-	][
+	][	
+		bytes-written: 1 
 		set-memory as byte-ptr! ol null-byte (size? ol)	
 		either length >= dev/output-report-length [
 			buf: data 
 		][
-			buf: as c-string! allocate dev/output-report-length
-			copy-memory as byte-ptr! buf as byte-ptr! data length
-			set-memory ((as byte-ptr! buf) + length) null-byte (dev/output-report-length - length)
+			buf: as byte-ptr! allocate dev/output-report-length
+			copy-memory buf data length
+			set-memory (buf + length) null-byte (dev/output-report-length - length)
 			length: dev/output-report-length
 		]
-		res: WriteFile as integer! dev/device-handle as byte-ptr! buf  length null (as int-ptr! ol)
-
+		buf: data 
+		probe ["dev/out-report-length:"dev/output-report-length]
+		res: WriteFile as integer! dev/device-handle buf  length null (as int-ptr! ol)
+		probe ["res:"res] 
 		if res = false [
 			if GetLastError <> ERROR_IO_PENDING [
 				register-error dev "WriteFile"
 				bytes-written: -1
-				if (as logic! (strcmp buf data)) = true [
+				if buf <> data  [
 					free as byte-ptr! buf 
 				]
 			]
 		]
 
-		;--Wait here until the write is done.
-		res: GetOverlappedResult dev/device-handle ol :bytes-written true
+		; ;--Wait here until the write is done.
+		 res: GetOverlappedResult dev/device-handle ol :bytes-written true
 		if res = false [
 			register-error dev  "WriteFile"
 			bytes-written: -1
-			if (as logic! (strcmp buf data)) = true [
+			if buf <> data  [
 					free as byte-ptr! buf 
 				]
 		]
-		if (as logic! (strcmp buf data)) = true [
+		if buf <> data  [
 					free as byte-ptr! buf 
 				]
 		return bytes-written
@@ -880,23 +884,23 @@ windows-hidapi: context [
 			return copy-len
 		]
 
-	; hid-read: func [
-	; 		dev 	[hid-device]
-	; 		data 	[c-string!]
-	; 		length	[integer!]
-	; 		return: [integer!]
-	; 		/local
-	; 			a 	[integer!]
-	; 			b 	[integer!]
-	; 	][
-	; 		either dev/blocking = true [
-	; 			a: -1 
-	; 		][
-	; 			a: 0
-	; 		]   ;compile error
-	; 		b: hid-read-timeout dev data length a 
-	; 		return b
-	; 	]
+	hid-read: func [
+			dev 	[hid-device]
+			data 	[c-string!]
+			length	[integer!]
+			return: [integer!]
+			/local
+				a 	[integer!]
+				b 	[integer!]
+		][
+			either dev/blocking [
+				a: -1 
+			][
+				a: 0
+			]   ;compile error
+			b: hid-read-timeout dev data length a 
+			return b
+		]
 
 	
 
