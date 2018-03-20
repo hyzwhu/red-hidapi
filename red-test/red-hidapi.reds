@@ -1,6 +1,6 @@
 Red/System []
 
-windows-hidapi: context [
+hid: context [
 	#define MAX_STRING_WCHARS				00000FFFh
 	#define FILE_SHARE_READ                 00000001h  
 	#define FILE_SHARE_WRITE                00000002h 
@@ -16,7 +16,7 @@ windows-hidapi: context [
 
 
 	;remian a block for hidapi.h
-	#define MIN(x y) (either x > y [y] [x])
+	;#define MIN(x y) (either x > y [y] [x])
 
 	;--extract the short type data from integer!
 	#define LOWORD(param) (param and FFFFh << 16 >> 16)   
@@ -186,7 +186,7 @@ windows-hidapi: context [
 				hObject							[integer!]
 				return: 						[integer!]
 			]
-			CreateFile: "CreateFileA" [
+			CreateFileA: "CreateFileA" [
 				lpFileName						[c-string!]
 				dwDesiredAccess					[integer!]
 				dwShareMode						[integer!]
@@ -363,8 +363,7 @@ windows-hidapi: context [
 		dev/last-error-num: 0
 		dev/read-pending: false
 		dev/read-buf: null
-		dev/ol: as overlapped-struct allocate size? overlapped-struct
-		set-memory as byte-ptr! dev/ol null-byte size? dev/ol
+		set-memory as byte-ptr! :dev/ol null-byte size? overlapped-struct
 		dev/ol/hEvent: CreateEvent null 0 0 null
 		return dev
 	]
@@ -424,13 +423,18 @@ windows-hidapi: context [
 		]
 		
 		share-mode: FILE_SHARE_READ or FILE_SHARE_WRITE
-		handle: as int-ptr! (CreateFile path desired-access 
-		share-mode null 3 FILE_FLAG_OVERLAPPED 0)
-		return handle
+		as int-ptr! CreateFileA
+						path
+						desired-access
+						share-mode
+						null
+						3
+						FILE_FLAG_OVERLAPPED
+						0
 	]
 
 	;--hid_enumerate function
-	hid-enumerate: func [
+	enumerate: func [
 		id 		[integer!] ;vendor-id and product-id
 		return: [hid-device-info]
 		/local 
@@ -659,11 +663,11 @@ windows-hidapi: context [
 		]
 	]
 
-		hid-open: func [
+	open: func [
 		vendor-id 		[integer!] ;vid
 		product-id 		[integer!] ;pid			
 		serial-number	[c-string!]
-		return:			[hid-device]
+		return:			[int-ptr!]
 		/local
 		devs 			[hid-device-info]
 		cur-dev			[hid-device-info]
@@ -675,7 +679,7 @@ windows-hidapi: context [
 		path-to-open: null
 		handle: null
 		id: product-id * 65536 + vendor-id
-		devs: hid-enumerate id
+		devs: enumerate id
 		cur-dev: devs 
 		while [cur-dev <> null] [
 			if cur-dev/id = id [
@@ -695,14 +699,14 @@ windows-hidapi: context [
 
 		if as logic! path-to-open [
 			;--open the device 
-			handle: hid-open-path path-to-open ;--have not been defined
+			handle: open-path path-to-open ;--have not been defined
 		]
 
 		hid-free-enumeration devs  ;--have not been defined
-		return handle
+		as int-ptr! handle
 	]
 
-		hid-open-path: func [
+	open-path: func [
 		path 		[c-string!]
 		return:  	[hid-device]
 		/local
@@ -751,19 +755,20 @@ windows-hidapi: context [
 		return dev 
 	]
 
-	hid-write: func [
-		dev 	[hid-device]
+	write: func [
+		device 	[int-ptr!]
 		data 	[byte-ptr!]
 		length 	[integer!]
 		return: [integer!]
-		/local 
+		/local
+			dev				[hid-device]
 			bytes-written	[integer!]
 			res  			[logic!]
 			ol 				[overlapped-struct value]
 			buf 			[byte-ptr!]
 			i 				[integer!]
-
 	][	
+		dev: as hid-device device
 		bytes-written: 1 
 		set-memory as byte-ptr! ol null-byte (size? ol)	
 		either length >= dev/output-report-length [
@@ -803,18 +808,20 @@ windows-hidapi: context [
 		return bytes-written
 	]
 
-	hid-read-timeout: func [
-		dev				[hid-device]
-		data 			[c-string!]
+	read-timeout: func [
+		device			[int-ptr!]
+		data 			[byte-ptr!]
 		length 			[integer!]
 		milliseconds	[integer!]
 		return: 		[integer!]
-		/local 
+		/local
+			dev			[hid-device]
 			bytes-read	[integer!]
 			copy-len	[integer!]
 			res 		[logic!]
 			ev 			[integer!] ;---handle
 	][
+		dev: as hid-device device
 		bytes-read: 0
 		copy-len: 	0
 		
@@ -842,20 +849,22 @@ windows-hidapi: context [
 		]
 			if milliseconds >= 0 [
 				;--see if there is any data yet
-				res: as logic! (WaitForSingleObject ev milliseconds)
-				if res = true [
+				if 0 <> WaitForSingleObject ev milliseconds [
 					;--there was no data this time.return zero bytes available
 					return 0
 				]
 			]
 
-			res: GetOverlappedResult dev/device-handle dev/ol :bytes-read true
+			res: GetOverlappedResult dev/device-handle as overlapped-struct :dev/ol :bytes-read true
 			
 
 			;--set pending back to false
 			dev/read-pending: false
 
-			if res and (bytes-read > 0) [
+			if all [
+				res
+				bytes-read > 0
+			][
 				either dev/read-buf/1 = null-byte [
 					bytes-read: bytes-read - 1
 					either length > bytes-read [
@@ -864,7 +873,7 @@ windows-hidapi: context [
 					][
 						copy-len: length
 					]
-					copy-memory as byte-ptr! data 
+					copy-memory data 
 					((as byte-ptr! dev/read-buf) + 1) copy-len
 				][
 					;--copy the whole buffer ,report number and all
@@ -874,7 +883,7 @@ windows-hidapi: context [
 					][
 						copy-len: length
 					]
-					copy-memory as byte-ptr! data as byte-ptr! dev/read-buf copy-len
+					copy-memory data as byte-ptr! dev/read-buf copy-len
 				]
 			]
 			if res = false [
@@ -884,61 +893,36 @@ windows-hidapi: context [
 			return copy-len
 		]
 
-	hid-read: func [
-			dev 	[hid-device]
-			data 	[c-string!]
+		read: func [
+			device 	[int-ptr!]
+			data 	[byte-ptr!]
 			length	[integer!]
 			return: [integer!]
 			/local
+				dev [hid-device]
 				a 	[integer!]
 				b 	[integer!]
 		][
+			dev: as hid-device device
 			either dev/blocking [
 				a: -1 
 			][
 				a: 0
 			]   ;compile error
-			b: hid-read-timeout dev data length a 
+			b: read-timeout device data length a 
 			return b
 		]
 
-	
-
-
-
-
-	
-
-
-
-
-	
-
-		hid-close: func [
-			dev 	[hid-device]
+		close: func [
+			device	[int-ptr!]
+			/local
+				dev [hid-device]
 		][
+			dev: as hid-device device
 			if dev <> null [
-			CancelIo dev/device-handle
-			free-hid-device dev
+				CancelIo dev/device-handle
+				free-hid-device dev
 			]
 		]
 
 ]
-
-
-
-
-
-
-		
-		
-
-
-
-
-
-
-
-
-	
-
