@@ -385,13 +385,16 @@ hid: context [
 		op 			[c-string!]
 		/local
 			ptr 	[c-string!]
-			msg 	[c-string!]
+			msg 	[integer!]
+			
 	][
-		msg: declare c-string!
-		FormatMessage 4864 null GetLastError 1024 msg 0 null
+		msg: 0 
+		FormatMessage 4864 null GetLastError 1024 :msg 0 null
+
 		;--get rid of the CR and LF that FormatMessage() sticks at the
 	   	;--end of the message.
-		ptr: msg 
+		ptr: as c-string! msg 
+		?? ptr
 		while [ptr/1 <> null-byte] [
 			if ptr/1 = #"^(0D)"  [
 				ptr/1: null-byte
@@ -744,7 +747,7 @@ hid: context [
 		]
 
 		nt-res: HidP_GetCaps as int-ptr! pp-data caps
-		if (nt-res xor HIDP_STATUS_SUCCESS) <> 0[
+		if nt-res <> HIDP_STATUS_SUCCESS [
 			register-error dev "HidP_GetCaps"
 			HidD_FreePreparsedData as int-ptr! pp-data
 		]

@@ -40,3 +40,45 @@ s: declare c-string!
 s: #u16 "1687DBC3F859CCFFC36D5F71"
 hid-test: windows-hidapi/hid-open 0000534Ch 00000001h s 
 probe ["hid-test:"hid-test]
+writeOk: declare integer!
+writeTest: func [
+		/local
+		msg-size   	 	[integer!]
+		msg-id     	 	[integer!]
+		buf         	[byte-ptr!]
+		i           	[integer!]
+	][
+		buf: as byte-ptr! allocate 64
+        msg-size: 11
+		i: 21
+		msg-id: 26
+        buf/1: #"?"
+		buf/2: #"#"
+		buf/3: #"#"
+		buf/4: as byte! ((msg-id >> 8) and 000000FFh)
+		buf/5: as byte! (msg-id and 000000FFh)
+		buf/6: as byte! ((msg-size >> 24) and 000000FFh)
+		buf/7: as byte! ((msg-size >> 16) and 000000FFh)
+		buf/8: as byte! ((msg-size >> 8) and 000000FFh)
+		buf/9: as byte! (msg-size and 000000FFh)
+		buf/10: as byte! 8
+		buf/11: as byte! 1
+		buf/12:  as byte!  18
+        buf/13: as byte! 7
+        buf/14: as byte! 116
+        buf/15: as byte! 101
+        buf/16: as byte! 115
+        buf/17: as byte! 116
+        buf/18: as byte! 105
+        buf/19: as byte! 111
+        buf/20: as byte! 103
+	    until [
+			buf/i: null-byte
+			i: i + 1
+		    i = 65
+		]
+        writeOk: windows-hidapi/hid-write hid-test buf 64
+        probe ["writeOk:" writeOk]
+	]
+writeTest
+
