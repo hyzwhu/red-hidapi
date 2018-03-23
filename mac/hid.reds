@@ -146,11 +146,15 @@ hid: context [
 					wcs   		[c-string!]
 					return: 	[integer!]
 				]
+				wprintf: "wprintf" [
+					[variadic]
+					return: 	[integer!]
+		]
 		]
 		"/System/Library/Frameworks/IOKit.framework/IOKit" cdecl [
 			IOHIDDeviceGetProperty: "IOHIDDeviceGetProperty" [
 				key 			[int-ptr!]
-				device 			[c-string!] ;--maybe fault
+				device 			[c-string!] 
 				return: 		[int-ptr!]
 			]
 			IOHIDDeviceGetService: "IOHIDDeviceGetService" [
@@ -423,14 +427,17 @@ hid: context [
 			len1 			[integer!]
 	][
 		used_buf_len: 0
-		if len <> 0 [
+		probe ["len:" len]
+		if len = 0 [
 			return 0
 		]
 
-		str: as c-string! IOHIDDeviceGetProperty device prop
+		str: as c-string! (IOHIDDeviceGetProperty device prop)
+probe as int-ptr! str 
 		buf/1: null-byte
 		buf/2: null-byte
 		either str <> null [
+probe "str is not ull"
 			str_len: CFStringGetLength str
 			len: len - 1
 
@@ -449,6 +456,7 @@ hid: context [
 											as byte-ptr! buf 
 											len * 4
 											:used_buf_len
+probe ["chars_copied:" chars_copied]
 			either chars_copied = len [
 				len1: len * 2 + 1
 				buf/len1: null-byte
@@ -548,11 +556,12 @@ hid: context [
 		/local
 			res  [integer!]
 	][
+		probe ["kCFRunLoopDefaultMode: "kCFRunLoopDefaultMode]
 		until [
 			res: CFRunLoopRunInMode as int-ptr! kCFRunLoopDefaultMode 0.001 false
+			probe res 
 			all [(res <> 1)  (res <> 3)]
 		]
-		
 	]
 
 
@@ -586,14 +595,17 @@ hid: context [
 			return null
 		]
 		;--give the iohidmanager a chance to updata itself
-		process_pending_events
+		;probe "before process pending"
+		;process_pending_events
 
 		;--get a list of the devices 
+		probe "before device matching"
 		IOHIDManagerSetDeviceMatching hid_mgr null
 		device_set: IOHIDManagerCopyDevices hid_mgr
 
 		;--convert the list into a c array so we can iterate easily
 		num_devices: CFSetGetCount device_set
+		probe ["num_devices:" num_devices]
 		device_array: as int-ptr! allocate 4 * num_devices
 		CFSetGetValues device_set device_array ;--typecasting (const void **)
 
@@ -604,13 +616,14 @@ hid: context [
 		i: 1
 		until [
 			dev: as int-ptr! device_array/i
-
+probe ["dev:" dev]
 			if dev = null [
 				continue 
 			]
 			dev_vid: get_vendor_id dev 
 			dev_pid: get_product_id dev 
-
+probe ["vendor_id:" dev_vid]
+probe ["product_id:" dev_pid]
 			;--check the vid/pid against the arguments
 
 			if all [
@@ -647,17 +660,30 @@ hid: context [
 			][ ;--means failue
 				cur_dev/path: strdup ""				
 			]
+			
+; probe ["cur_dev/path:" cur_dev/path]
 
 			;--serial number
 			get_serial_number dev buf BUF_LEN
-			cur_dev/serial-number: dup_wcs buf 
+probe "buf:"
+wprintf buf
+probe " "
+			cur_dev/serial-number: dup_wcs buf
+probe "cur_dev/serial-number:" 
+wprintf cur_dev/serial-number
+probe " "
 
 			;--manufacturer and product strings
 			get_manufacturer_string dev buf BUF_LEN
 			cur_dev/manufacturer-string: dup_wcs buf 
+probe "cur_dev/manufacturer-string:"
+wprintf cur_dev/manufacturer-string
+probe " "
 			get_product_string dev buf BUF_LEN
 			cur_dev/product-string: dup_wcs buf 
-
+probe "cur_dev/product-string:"
+wprintf cur_dev/product-string
+probe " "
 			;--vip/pid
 			cur_dev/id: cur_dev/id and 0000FFFFh or dev_vid
 			cur_dev/id: cur_dev/id and FFFF0000h or dev_pid
