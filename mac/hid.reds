@@ -17,6 +17,7 @@ hid: context [
 	#define CFSTR(cStr)							[CFStringCreateWithCString 0 cStr kCFStringEncodingUTF8]
 	#define LOWORD(param) (param and FFFFh << 16 >> 16)   
 	#define HIWORD(param) (param >> 16)
+	#define WIDE_CHAR_SIZE						4
 	
 	
 	hid_mgr: as int-ptr! 00000000h
@@ -230,12 +231,12 @@ hid: context [
 				cf 			[int-ptr!]
 			]
 			CFStringGetLength: "CFStringGetLength" [
-				theString 	[c-string!]
+				theString 	[int-ptr!]
 				return: 	[integer!]
 			]
 			CFStringGetBytes: "CFStringGetBytes" [
-				theString					[c-string!]
-				range 						[CFRange]
+				theString					[int-ptr!]
+				range 						[CFRange value]
 				encoding					[integer!]
 				lossByte					[byte!]
 				isExternalRepresentation	[logic!]
@@ -346,8 +347,8 @@ hid: context [
 		rpt: dev/input_reports
 		while [rpt <> null] [
 			next: rpt/next
-			free as byte-ptr! rpt/data
-			free as byte-ptr! rpt
+			;free rpt/data
+			;free as byte-ptr! rpt
 			rpt: next
 		]
 
@@ -358,7 +359,7 @@ hid: context [
 		if dev/source <> null [
 			CFRelease dev/source
 		]
-		free dev/input_report_buf
+		;free dev/input_report_buf
 		
 		;--clean up the thread objects
 		pthread_barrier_destroy as pthread_barrier_t :dev/shutdown_barrier
@@ -419,7 +420,7 @@ hid: context [
 		len 		[integer!]
 		return: 	[integer!]
 		/local
-			str 			[c-string!]	
+			cf-str 			[int-ptr!]	
 			str_len 		[integer!]
 			used_buf_len	[integer!]
 			chars_copied	[integer!]	
@@ -431,32 +432,26 @@ hid: context [
 		if len = 0 [
 			return 0
 		]
-
-		str: as c-string! (IOHIDDeviceGetProperty device prop)
-probe as int-ptr! str 
+		cf-str: IOHIDDeviceGetProperty device prop
 		buf/1: null-byte
 		buf/2: null-byte
-		either str <> null [
-probe "str is not ull"
-			str_len: CFStringGetLength str
+		either cf-str <> null [
+			str_len: CFStringGetLength cf-str
 			len: len - 1
-
 			range/location: 0
 			either str_len > len [
 				range/length: len 
 			][
 				range/length: str_len
 			]
-
-			chars_copied: CFStringGetBytes 	str
+			chars_copied: CFStringGetBytes cf-str
 											range
 											kCFStringEncodingUTF32LE
 											#"?"
 											false
 											as byte-ptr! buf 
-											len * 4
+											len * WIDE_CHAR_SIZE
 											:used_buf_len
-probe ["chars_copied:" chars_copied]
 			either chars_copied = len [
 				len1: len * 2 + 1
 				buf/len1: null-byte
@@ -480,7 +475,7 @@ probe ["chars_copied:" chars_copied]
 		len 		[integer!]
 		return: 	[integer!]
 	][
-		return get_string_property device as c-string! CFSTR(kIOHIDSerialNumberKey) buf len 
+		return get_string_property device (as c-string! CFSTR(kIOHIDSerialNumberKey)) buf len 
 	]
 
 	get_manufacturer_string: func [
@@ -488,7 +483,7 @@ probe ["chars_copied:" chars_copied]
 		buf 		[c-string!]
 		len 		[integer!]
 		return: 	[integer!]
-	][
+	][		
 		return get_string_property device as c-string! CFSTR(kIOHIDManufacturerKey) buf len 
 	]
 
@@ -496,9 +491,11 @@ probe ["chars_copied:" chars_copied]
 		device 		[int-ptr!]
 		buf 		[c-string!]
 		len 		[integer!]
-		return: 	[integer!]
 	][
-		return get_string_property device as c-string! CFSTR(kIOHIDProductKey) buf len 
+		probe "get_product_string"
+		dump-hex as byte-ptr! buf
+		get_string_property device as c-string! CFSTR(kIOHIDProductKey) buf len 
+		dump-hex as byte-ptr! buf		
 	]
 
 	;--implementation of wcsdup() for mac
@@ -510,13 +507,9 @@ probe ["chars_copied:" chars_copied]
 			ret  	[c-string!]
 	][
 		len: wcslen s 
-		ret: as c-string! allocate (len + 1) * 2
-		wcscpy ret s 
-		return ret
+		ret: as c-string! allocate (len + 1) * WIDE_CHAR_SIZE
+		wcscpy ret s
 	]
-
-
-	
 
 	;--initialize the iohidmanager.return 0 for success and -1 for failure
 	init_hid_manager: func [
@@ -556,11 +549,9 @@ probe ["chars_copied:" chars_copied]
 		/local
 			res  [integer!]
 	][
-		probe ["kCFRunLoopDefaultMode: "kCFRunLoopDefaultMode]
 		until [
 			res: CFRunLoopRunInMode as int-ptr! kCFRunLoopDefaultMode 0.001 false
-			probe res 
-			all [(res <> 1)  (res <> 3)]
+			any [res = 1  res = 3]
 		]
 	]
 
@@ -571,8 +562,8 @@ probe ["chars_copied:" chars_copied]
 		product-id 	[integer!]
 		return: 	[hid-device-info]
 		/local 
-			root 			[hid-device-info value]
-			cur_dev 		[hid-device-info value]
+			root 			[hid-device-info]
+			cur_dev 		[hid-device-info]
 			num_devices		[integer!]
 			i 				[integer!]
 			device_set 		[int-ptr!]
@@ -590,33 +581,30 @@ probe ["chars_copied:" chars_copied]
 		root: null
 		cur_dev: null
 		path: as c-string! system/stack/allocate 128
+		buf: as c-string! system/stack/allocate 256
 		;--set up the hid manager if it has not been done
 		if hid_init < 0 [
 			return null
 		]
 		;--give the iohidmanager a chance to updata itself
 		;probe "before process pending"
-		;process_pending_events
+		process_pending_events
 
 		;--get a list of the devices 
-		probe "before device matching"
 		IOHIDManagerSetDeviceMatching hid_mgr null
 		device_set: IOHIDManagerCopyDevices hid_mgr
 
 		;--convert the list into a c array so we can iterate easily
 		num_devices: CFSetGetCount device_set
-		probe ["num_devices:" num_devices]
 		device_array: as int-ptr! allocate 4 * num_devices
 		CFSetGetValues device_set device_array ;--typecasting (const void **)
 
-		;--stack/allocate space for buf
-		buf: as c-string! system/stack/allocate 128
 
 		;--irerate over each device, making an entry for it
 		i: 1
 		until [
 			dev: as int-ptr! device_array/i
-probe ["dev:" dev]
+; probe ["dev:" dev]
 			if dev = null [
 				continue 
 			]
@@ -640,6 +628,7 @@ probe ["product_id:" dev_pid]
 				cur_dev: tmp
 			]
 			
+?? cur_dev
 			;--get the usage page and usage for this device
 			x: (get_int_property dev as c-string! CFSTR(kIOHIDPrimaryUsagePageKey)) << 16
 			cur_dev/usage: cur_dev/usage and 0000FFFFh or x
@@ -655,23 +644,19 @@ probe ["product_id:" dev_pid]
 			res: IORegistryEntryGetPath iokit_dev 
 										kIOServicePlane  ;--have not defined
 										path
-			either res = 0 [ ;--means success
-				cur_dev/path: strdup path
-			][ ;--means failue
-				cur_dev/path: strdup ""				
-			]
+
 			
 ; probe ["cur_dev/path:" cur_dev/path]
 
 			;--serial number
 			get_serial_number dev buf BUF_LEN
-probe "buf:"
-wprintf buf
-probe " "
+;probe "buf:"
+;wprintf buf
+;probe " "
 			cur_dev/serial-number: dup_wcs buf
 probe "cur_dev/serial-number:" 
 wprintf cur_dev/serial-number
-probe " "
+probe "serial-number finished"
 
 			;--manufacturer and product strings
 			get_manufacturer_string dev buf BUF_LEN
@@ -680,17 +665,22 @@ probe "cur_dev/manufacturer-string:"
 wprintf cur_dev/manufacturer-string
 probe " "
 			get_product_string dev buf BUF_LEN
+dump-hex as byte-ptr! buf 
 			cur_dev/product-string: dup_wcs buf 
+dump-hex as byte-ptr! cur_dev/product-string
 probe "cur_dev/product-string:"
 wprintf cur_dev/product-string
 probe " "
+probe " "
+probe " "
+probe " "
 			;--vip/pid
-			cur_dev/id: cur_dev/id and 0000FFFFh or dev_vid
-			cur_dev/id: cur_dev/id and FFFF0000h or dev_pid
-
+			cur_dev/id: dev_pid << 16 or dev_vid
+; probe "before get_int"
 			;--release number 
-			cur_dev/release-number: get_int_property dev as c-string! CFSTR(kIOHIDVersionNumberKey) 							 
-			
+; probe [dev " " CFSTR(kIOHIDVersionNumberKey)]
+			get_int_property dev (as c-string! CFSTR(kIOHIDVersionNumberKey)) 							 
+; probe "after get_int"			
 			;--interface number
 			cur_dev/interface-number: -1
 			
