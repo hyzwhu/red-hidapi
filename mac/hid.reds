@@ -17,7 +17,9 @@ hid: context [
 	#define CFSTR(cStr)							[CFStringCreateWithCString 0 cStr kCFStringEncodingUTF8]
 	#define LOWORD(param) (param and FFFFh << 16 >> 16)   
 	#define HIWORD(param) (param >> 16)
-	#define WIDE_CHAR_SIZE						4
+	#define WIDE_CHAR_SIZE						4\
+	#define kIOHIDOptionsTypeSeizeDevice		1
+	#define kCFStringEncodingASCII				00000600h
 	
 	
 	hid_mgr: as int-ptr! 00000000h
@@ -57,14 +59,6 @@ hid: context [
 		trip_count  [integer!]
 	]
 
-	io_object_t: alias struct! [
-		po_SystemKey 		[integer!]
-		po_MessageList 		[int-ptr!]
-		po_Flags 			[integer!]
-		po_Task 			[int-ptr!]
-		po_openAndSignal	[integer!]	
-	]
-
 	input_report: alias struct! [
 		data 		[byte-ptr!]
 		len 	 	[integer!]
@@ -97,6 +91,19 @@ hid: context [
 		shutdown_thread 		[integer!]
 	]
 
+	CFRunLoopSourceContext: alias struct! [
+		version 			[integer!]
+		info 				[int-ptr!]
+		retain				[int-ptr!]
+		release 			[int-ptr!]
+		copyDescription		[int-ptr!]
+		equal				[int-ptr!]
+		hash 				[int-ptr!]
+		schedule 			[int-ptr!]
+		cancel 				[int-ptr!]
+		perform 			[int-ptr!]					
+	]
+
 	#import [
 		LIBC-file cdecl [
 				strdup: "strdup" [
@@ -107,6 +114,11 @@ hid: context [
 					str1 		[c-string!]
 					str2 		[c-string!]
 					return: 	[c-string!]
+				]
+				wcscmp: "wcscmp" [
+				string1		[c-string!]
+				string2 	[c-string!]
+				return: 	[integer!]
 				]
 				pthread_mutex_init: "pthread_mutex_init" [
 					mutex 		[int-ptr!]
@@ -150,7 +162,29 @@ hid: context [
 				wprintf: "wprintf" [
 					[variadic]
 					return: 	[integer!]
-		]
+				]
+				sprintf: "sprintf" [
+					str	  		[c-string!]
+					format 		[c-string!]
+					[variadic]
+					return: 	[integer!]	
+				]
+				pthread_create: "pthread_create" [
+					restrict 	[int-ptr!]
+					restrict1 	[int-ptr!]
+					restrict2 	[int-ptr!]
+					restrict3 	[int-ptr!]
+					retrun: 	[integer!]
+				]
+				memcpy: "memcpy" [
+					destination 	[byte-ptr!]
+					source 			[byte-ptr!]
+					size 			[integer!]
+				]
+				pthread_cond_signal: "pthread_cond_signal" [
+					pthread_cond 	[int-ptr!]
+					return: 		[integer!]
+				]
 		]
 		"/System/Library/Frameworks/IOKit.framework/IOKit" cdecl [
 			IOHIDDeviceGetProperty: "IOHIDDeviceGetProperty" [
@@ -160,10 +194,10 @@ hid: context [
 			]
 			IOHIDDeviceGetService: "IOHIDDeviceGetService" [
 				device 			[int-ptr!]
-				return: 		[io_object_t]
+				return: 		[int-ptr!]
 			]
 			IORegistryEntryGetPath: "IORegistryEntryGetPath" [
-				entry			[io_object_t]
+				entry			[int-ptr!]
 				plane 			[c-string!]   ;--size is 128
 				path 			[c-string!]   ;--size is 512
 				return: 		[integer!]
@@ -191,9 +225,47 @@ hid: context [
 				manager			[int-ptr!]
 				return: 		[int-ptr!]
 			]
+			IORegistryEntryFromPath: "IORegistryEntryFromPath" [
+				masterPort 		[int-ptr!]
+				path 			[c-string!]
+				return: 		[int-ptr!]
+			]
+			IOObjectRelease: "IOObjectRelease" [
+				object 		[int-ptr!]
+				return: 	[integer!]
+			]
+			IOHIDDeviceCreate: "IOHIDDeviceCreate" [
+				allocator 	[int-ptr!]
+				service 	[int-ptr!]
+				return: 	[int-ptr!]
+			]
+			IOHIDDeviceOpen: "IOHIDDeviceOpen" [
+				device 		[int-ptr!]
+				options 	[integer!]
+				return: 	[integer!]
+			]
+			IOHIDDeviceRegisterInputReportCallback: "IOHIDDeviceRegisterInputReportCallback" [
+				device 			[int-ptr!]
+				report 			[byte!]
+				reportlength	[integer!]
+				callback 		[int-ptr!]  ;--Pointer to a callback method of type IOHIDReportCallback.
+				context 		[int-ptr!]
+			]
+			IOHIDDeviceRegisterRemovalCallback: "IOHIDDeviceRegisterRemovalCallback" [
+				device 			[int-ptr!]
+				callback 		[int-ptr!]
+				context 		[int-ptr!]
+			]
+			IOHIDDeviceScheduleWithRunLoop: "IOHIDDeviceScheduleWithRunLoop" [
+				device 			[int-ptr!]
+				runloop 		[int-ptr!]
+				runLoopMode		[int-ptr!]
+			]
 		]
 		"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation" cdecl [
 			kCFRunLoopDefaultMode: "kCFRunLoopDefaultMode" [integer!]
+			kIOMasterPortDefault: "kIOMasterPortDefault" [int-ptr!]
+			kCFAllocatorDefault: "kCFAllocatorDefault" [int-ptr!]
 			CFStringCreateWithCString: "CFStringCreateWithCString" [
 						allocator	[integer!]
 						cStr		[c-string!]
@@ -248,6 +320,9 @@ hid: context [
 			CFRunLoopGetCurrent: "CFRunLoopGetCurrent" [
 				return: 				[int-ptr!]
 			]
+			CFRunLoopStop: "CFRunLoopStop" [
+				rl   		[int-ptr!]
+			]
 
 		]
 	]
@@ -300,13 +375,6 @@ hid: context [
 		]
 	]
 
-	; return_data: func [   ;maybe delete
-	; 	dev 		[hid-device]
-	; 	data 		[byte-ptr!]
-	; 	length 		[integer!]
-	; 	return:  	[integer!]
-	; ][]
-
 
 	new-hid-device: func [
 		return: 	[hid-device]
@@ -347,8 +415,8 @@ hid: context [
 		rpt: dev/input_reports
 		while [rpt <> null] [
 			next: rpt/next
-			;free rpt/data
-			;free as byte-ptr! rpt
+			free rpt/data
+			free as byte-ptr! rpt
 			rpt: next
 		]
 
@@ -359,7 +427,7 @@ hid: context [
 		if dev/source <> null [
 			CFRelease dev/source
 		]
-		;free dev/input_report_buf
+		free dev/input_report_buf
 		
 		;--clean up the thread objects
 		pthread_barrier_destroy as pthread_barrier_t :dev/shutdown_barrier
@@ -574,7 +642,7 @@ probe "after get_string_property!!!!!!!!!!!!!"
 			buf 			[c-string!]
 			dev 			[int-ptr!]
 			tmp 			[hid-device-info]
-			iokit_dev 		[io_object_t]
+			iokit_dev 		[int-ptr!]
 			res 			[integer!]  ;--kern_return_t is int
 			path			[c-string!]
 			x 				[integer!]
@@ -694,6 +762,240 @@ probe " "
 
 		return root
 	]
+
+
+	open: func [
+		vendor-id 		[integer!]
+		product-id		[integer!]
+		serial-number 	[c-string!]
+		return: 		[int-ptr!]
+		/local
+			devs 			[hid-device-info value]
+			cur_dev 		[hid-device-info value]
+			path_to_open 	[c-string!]
+			handle 			[hid-device]
+	][
+		devs: enumerate vendor-id product-id
+		cur_dev: devs 
+		until [
+			if all [HIWORD(cur_dev/id) = vendor-id  LOWORD(cur_dev/id) = product-id] [
+				either serial-number <> null [
+					if 0 = wcscmp serial-number cur_dev/serial-number [
+						path_to_open: cur_dev/path
+						break
+					]
+				][
+					path_to_open: cur_dev/path
+					break
+				]
+			]
+			cur_dev: cur_dev/next
+			cur_dev = null
+		]
+
+		if path_to_open <> null [
+			handle: open_path path_to_open
+		]
+
+		hid_free_enumerate devs 
+		handle	
+	]
+
+	open_path: func [
+		path		[c-string!]
+		return: 	[hid-device]
+		/local
+			dev 	[hid-device]
+			entry 	[int-ptr!]
+			ret		[integer!]
+			str 	[c-string!]
+	][
+		entry: null
+		dev: new-hid-device
+		str: as c-string! system/stack/allocate 8
+		if hid_init < 0 [
+			return null
+		]
+
+		entry: IORegistryEntryFromPath kIOMasterPortDefault path
+		if entry = null [
+			;--path was not valid 
+			;--return_error
+			if dev/device_handle <> null [
+				CFRelease dev/device_handle
+			]
+			if entry <> null [
+				IOObjectRelease entry
+			]
+			free-hid-device dev 
+			return null	
+			;-------------return_error
+		]
+		
+		;--create and IOGIDDevice for entry
+		dev/device_handle: IOHIDDeviceCreate kCFAllocatorDefault entry
+		if dev/device_handle = null [
+			;--return_error
+			if dev/device_handle <> null [
+				CFRelease dev/device_handle
+			]
+			if entry <> null [
+				IOObjectRelease entry
+			]
+			free-hid-device dev 
+			return null	
+			;-------------return_error
+		]
+
+		;--open the IOHIDDevice
+		ret: IOHIDDeviceOpen dev/device_handle kIOHIDOptionsTypeSeizeDevice
+
+		if ret = 0 	[ ;--return success
+			;--create the buffers for receiving data 
+			dev/max_input_report_len: get_max_report_length dev/device_handle
+			dev/input_report_buf: as byte-ptr! allocate dev/max_input_report_len
+
+			;--create the run loop mode for this device.
+			;--printing the reference seems to work
+			sprintf str "HIDAPI_%p" dev/device_handle
+			dev/run_loop_mode: CFStringCreateWithCString 0 
+														str
+														kCFStringEncodingASCII
+
+			;--attach the device to a run loop
+			IOHIDDeviceRegisterInputReportCallback 	dev/device_handle
+													dev/input_report_buf
+													dev/max_input_report_len
+													as int-ptr! :hid_report_callback
+													as int-ptr! dev 
+			IOHIDDeviceRegisterRemovalCallback 	dev/device_handle
+												as int-ptr! hid_device_removal_callback
+												as int-ptr! dev 
+
+
+			;--start the read thread
+			pthread_create as int-ptr! :dev/thread  
+										null	
+
+										
+		]
+
+		
+	]
+
+	hid_device_removal_callback: func [
+		context 	[int-ptr!]
+		result 		[integer!]
+		sender 		[int-ptr!]
+		/local
+			d 		[hid-device]
+	][
+		d: as hid-device context
+		d/disconnected: 1
+		CFRunLoopStop d/run_loop
+	]
+
+	hid_report_callback: func [
+		[cdecl]
+		context 		[int-ptr!]
+		result 			[integer!]
+		sender 			[int-ptr!]
+		report_type		[integer!]
+		report_id 		[integer!]
+		report 			[byte-ptr!]
+		report_length 	[integer!]
+		/local
+			rpt 		[input_report]
+			dev 		[hid-device]
+			cur 		[input_report]
+			num_queued	[integer!]
+	][
+		dev: context 
+
+		;--make a new input report object 
+		rpt: as input_report allocate size? input_report
+		rpt/data: as byte-ptr! allocate report_length
+		memcpy rpt/data report report_length
+		rpt/len: report_length
+		rpt/next: null
+
+		;--lock this section
+		pthread_mutex_lock
+
+		;--attach the new report object to the end of the list 
+		either dev/input_reports = null [
+			dev/input_reports: rpt
+		][
+			;--find the end of the list and attach
+			cur: dev/input_reports 
+			num_queued: 0
+			until [
+				cur: cur/next 
+				num_queued: num_queued + 1
+				cur/next = null
+			]
+			cur/next: rpt 
+
+			if num_queued > 30 [
+				return_data dev null 0
+			]
+
+		]
+		pthread_cond_signal as int-ptr! :dev/condition
+
+		;--unclock
+		pthread_mutex_unlock as int-ptr! :dev/mutex 
+		
+	]
+
+	return_data: func [
+		dev 		[hid-device]
+		data 		[byte-ptr!]
+		length		[integer!]
+		return: 	[integer!]
+		/local 
+			rpt		[input_report]
+			len 	[integer!]
+	][
+		rpt: dev/input_reports
+		either length < rpt/len [
+			len: length
+		][
+			len: rpt/len 
+		]
+		memcpy data rpt/data len 
+		dev/input_reports: rpt/next 
+		free rpt/data 
+		free as byte-ptr! rpt 
+		len 
+	]
+
+	read_thread: func [
+		param 		[int-ptr!]
+		return: 	[int-ptr!]
+		/local
+			dev		[hid-device]
+			code 	[integer!]
+			ctx 	[CFRunLoopSourceContext value]
+
+	][	
+		dev: as hid-device param
+		;--move the device's  run loop to this thread
+		IOHIDDeviceScheduleWithRunLoop  as int-ptr! dev/device_handle
+										CFRunLoopGetCurrent
+										as int-ptr! dev/run_loop_mode
+		
+		;--create the runloopsource which is used to signal the event loop to\
+		;--stop when hid_close is called
+
+	]
+
+
+
+
+
+
+
 
 
 
