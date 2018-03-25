@@ -453,12 +453,12 @@ hid: context [
 											len * WIDE_CHAR_SIZE
 											:used_buf_len
 			either chars_copied = len [
-				len1: len * 2 + 1
+				len1: len * 4 + 1
 				buf/len1: null-byte
 				len1: len + 1
 				buf/len1: null-byte
 			][
-				len1: chars_copied * 2 + 1
+				len1: chars_copied * 4 + 1
 				buf/len1: null-byte
 				len1: len +1
 				buf/len1: null-byte
@@ -495,6 +495,7 @@ hid: context [
 		probe "get_product_string"
 		dump-hex as byte-ptr! buf
 		get_string_property device as c-string! CFSTR(kIOHIDProductKey) buf len 
+probe "after get_string_property!!!!!!!!!!!!!"
 		dump-hex as byte-ptr! buf		
 	]
 
@@ -665,9 +666,9 @@ probe "cur_dev/manufacturer-string:"
 wprintf cur_dev/manufacturer-string
 probe " "
 			get_product_string dev buf BUF_LEN
-dump-hex as byte-ptr! buf 
+;dump-hex as byte-ptr! buf 
 			cur_dev/product-string: dup_wcs buf 
-dump-hex as byte-ptr! cur_dev/product-string
+;dump-hex as byte-ptr! cur_dev/product-string
 probe "cur_dev/product-string:"
 wprintf cur_dev/product-string
 probe " "
