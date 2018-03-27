@@ -557,7 +557,7 @@ hid: context [
 			;--Get the Vendor ID and Product ID for this device.
 			attrib/Size: size? HIDD-ATTRIBUTES
 			HidD_GetAttributes write-handle attrib
-			if (id = 0) or (attrib/ID = id) [
+			if any [id = 0  attrib/ID = id] [
 				wstr: as c-string! allocate 1024
 				tmp: as hid-device-info allocate size? hid-device-info
 				pp-data: declare int-ptr!
@@ -595,8 +595,8 @@ hid: context [
 				;--serial number
 				res1: HidD_GetSerialNumberString write-handle wstr 1024
 				;b/value: b/value and 0000FFFFh or (00000000h << 16)
-				wstr/1021: null-byte
-				wstr/1022: null-byte
+				wstr/1023: null-byte
+				wstr/1024: null-byte
 				either res1 [
 					cur-dev/serial-number: wcsdup wstr
 				][
@@ -604,8 +604,8 @@ hid: context [
 				]
 				;--manufacturer string
 				res1: HidD_GetManufacturerString write-handle  wstr 1024
-				wstr/1021: null-byte
-				wstr/1022: null-byte
+				wstr/1023: null-byte
+				wstr/1024: null-byte
 				if res1 [
 					cur-dev/manufacturer-string: wcsdup wstr
 				]
@@ -613,8 +613,8 @@ hid: context [
 
 				;--product string
 				res1: HidD_GetProductString write-handle wstr 1024
-				wstr/1021: null-byte
-				wstr/1022: null-byte
+				wstr/1023: null-byte
+				wstr/1024: null-byte
 				if res1 [
 					cur-dev/product-string: wcsdup wstr
 				]
@@ -857,7 +857,9 @@ hid: context [
 				]
 			]
 
-			res: GetOverlappedResult dev/device-handle as overlapped-struct :dev/ol :bytes-read true
+			res: GetOverlappedResult dev/device-handle as overlapped-struct :dev/ol 
+																			:bytes-read 
+																			true
 			
 
 			;--set pending back to false
