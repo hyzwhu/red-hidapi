@@ -65,10 +65,23 @@ hid: context [
 		opaque5     [integer!]
 		opaque6		[integer!]    	       
 	]
-	
+
+	pthread_mutex_t: alias struct! [
+		__sig 		[integer!]
+		opaque1     [integer!]	;opaque size =40
+		opaque2		[integer!]
+		opaque3     [integer!]
+		opaque4		[integer!]   
+		opaque5     [integer!]
+		opaque6		[integer!]
+		opaque7     [integer!]
+		opaque8		[integer!]   
+		opaque9     [integer!]
+		opaque10	[integer!]     
+	]	
 	pthread_barrier_t: alias struct! [
-		mutex       [integer!]
-		cond        [pthread_cond_t]
+		mutex       [pthread_mutex_t value]
+		cond        [pthread_cond_t value]
 		count       [integer!]
 		trip_count  [integer!]
 	]
@@ -94,7 +107,7 @@ hid: context [
 		input_reports 			[input_report]
 
 		thread 					[pthread_t]
-		mutex 					[integer!]   ;pthread_mutex_t is int
+		mutex 					[pthread_mutex_t value]   ;pthread_mutex_t is int
 		condition 				[pthread_cond_t value]
 		barrier 				[pthread_barrier_t value]
 		shutdown_barrier 		[pthread_barrier_t value]
@@ -917,14 +930,12 @@ dump-hex as byte-ptr! entry
 			return null	
 			;-------------return_error
 		]
-probe 3		
-probe 31
 ?? entry
 ; IOHIDDeviceCreate as int-ptr! kCFAllocatorDefault entry
 		;--create and IOGIDDevice for entry
 probe "1234abcd"
-IOHIDDeviceCreate null entry
-		;dev/device_handle: IOHIDDeviceCreate as int-ptr! kCFAllocatorDefault entry
+; IOHIDDeviceCreate null entry
+		dev/device_handle: IOHIDDeviceCreate as int-ptr! kCFAllocatorDefault entry
 ;IOHIDDeviceCreate null entry
 probe 4
 		if dev/device_handle = null [
@@ -942,19 +953,20 @@ probe 4
 probe 5
 		;--open the IOHIDDevice
 		ret: IOHIDDeviceOpen dev/device_handle kIOHIDOptionsTypeSeizeDevice
-
+probe 6
+?? ret
 		either ret = 0 	[ ;--return success
 			;--create the buffers for receiving data 
 			dev/max_input_report_len: get_max_report_length dev/device_handle
 			dev/input_report_buf:  allocate dev/max_input_report_len
-
+probe 7
 			;--create the run loop mode for this device.
 			;--printing the reference seems to work
 			sprintf str "HIDAPI_%p" dev/device_handle
 			dev/run_loop_mode: CFStringCreateWithCString 	0 
 															str
 															kCFStringEncodingASCII
-
+probe 8
 			;--attach the device to a run loop
 			IOHIDDeviceRegisterInputReportCallback 	dev/device_handle
 													dev/input_report_buf
@@ -962,21 +974,23 @@ probe 5
 													as int-ptr! :hid_report_callback
 													as int-ptr! dev 
 		
-		
+probe 9		
 			IOHIDDeviceRegisterRemovalCallback 	dev/device_handle
 												as int-ptr! :hid_device_removal_callback
 												as int-ptr! dev 
 
-
+probe 10
 			;--start the read thread
 			pthread_create :dev/thread  
 										null	
 										as int-ptr! :read_thread
 										as int-ptr! dev 
-			
+probe 11			
 			;--wait here for the read thread to be initialized
 			pthread_barrier_wait as pthread_barrier_t :dev/barrier
+probe 12
 			IOObjectRelease entry
+probe 13
 			return dev 									
 		][
 			if dev/device_handle <> null [
