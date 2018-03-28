@@ -1081,11 +1081,7 @@ probe 13
 			len 	[integer!]
 	][
 		rpt: dev/input_reports
-		either length < rpt/len [
-			len: length
-		][
-			len: rpt/len 
-		]
+		len: either length < rpt/len [length][rpt/len]
 		memcpy data rpt/data len 
 		dev/input_reports: rpt/next 
 		free rpt/data 
