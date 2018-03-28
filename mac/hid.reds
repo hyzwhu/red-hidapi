@@ -1161,11 +1161,14 @@ probe 13
 	]
 
 	write: func [
-		dev 		[hid-device]
+		device 		[int-ptr!]
 		data 		[byte-ptr!]
 		length 		[integer!]
 		return: 	[integer!]
+		/local
+			dev 	[hid-device]
 	][
+		dev: as hid-device device
 		set_report dev kIOHIDReportTypeOutput data length
 	]
 
@@ -1209,26 +1212,33 @@ probe 13
 	]
 
 	read: func [
-		dev 		[hid-device]
+		device 		[int-ptr!]
 		data 		[byte-ptr!]
 		length 		[integer!]
 		return: 	[integer!]
+		/local
+			dev 	[hid-device]
+			ms 		[integer!]
 	][
-		read_timeout dev data length either dev/blocking <> 0 [-1][0]
+		dev: as hid-device device
+		ms: either dev/blocking <> 0 [-1][0]
+		read_timeout device data length ms
 	]
 
 	read_timeout: func [
-		dev 			[hid-device]
+		device 			[int-ptr!]
 		data 			[byte-ptr!]
 		length			[integer!]
 		milliseconds	[integer!]
 		return: 		[integer!]
 		/local
+			dev 		[hid-device]
 			bytes_read	[integer!]
 			res 		[integer!]
 			ts 			[timespec! value]
 			tv 			[timeval! value]
 	][
+		dev: as hid-device device
 		bytes_read: -1
 		pthread_mutex_lock :dev/mutex
 
@@ -1241,6 +1251,14 @@ probe 13
 		]
 
 		if dev/disconnected <> 0 [
+			bytes_read: -1
+			;--unlock
+			pthread_mutex_unlock :dev/mutex
+			return bytes_read
+			;--unlock section
+		]
+
+		if dev/shutdown_thread <> 0 [
 			bytes_read: -1
 			;--unlock
 			pthread_mutex_unlock :dev/mutex
@@ -1261,7 +1279,7 @@ probe 13
 				gettimeofday  tv  0
 				TIMEVAL_TO_TIMESPEC tv ts 
 				ts/sec: ts/sec + milliseconds / 1000
-				ts/nsec: ts/nsec + milliseconds % 1000 * 1000000
+				ts/nsec: ts/nsec + (milliseconds % 1000) * 1000000
 				if ts/nsec >= 1000000000 [
 					ts/sec: ts/sec + 1
 					ts/nsec: ts/nsec - 1000000000
