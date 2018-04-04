@@ -990,6 +990,7 @@ probe "before hid-free-enumeration"
 	]
 
 	hid_device_removal_callback: func [
+		[cdecl]
 		context 	[int-ptr!]
 		result 		[integer!]
 		sender 		[int-ptr!]
@@ -1072,6 +1073,7 @@ probe "before hid-free-enumeration"
 	]
 
 	read_thread: func [
+		[cdecl]
 		param 		[int-ptr!]
 		return: 	[int-ptr!]
 		/local
