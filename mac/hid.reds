@@ -102,7 +102,7 @@ hid: context [
 		run_loop_mode 			[int-ptr!]
 		run_loop 				[int-ptr!]
 		source 					[int-ptr!]
-		input_report_buf		[byte-ptr!]
+		input_report_buf		[c-string!]
 		max_input_report_len 	[integer!]  ;CFIndex alias int
 		input_reports 			[input_report]
 
@@ -208,11 +208,6 @@ hid: context [
 				pthread_cond_signal: "pthread_cond_signal" [
 					pthread_cond 	[int-ptr!]
 					return: 		[integer!]
-				]
-				memset: "memset" [
-					ptr 		[int-ptr!]
-					value 		[integer!]
-					num 		[integer!]
 				]
 				gettimeofday: "gettimeofday" [
 					tv		[timeval!]
@@ -513,7 +508,7 @@ hid: context [
 			next 	[hid-device-info]
 	][
 		d: devs 
-		until [
+		while [d <> null] [
 			next: d/next
 			free as byte-ptr! d/path
 			free as byte-ptr! d/serial-number
@@ -521,7 +516,6 @@ hid: context [
 			free as byte-ptr! d/product-string
 			free as byte-ptr! d 
 			d: next 
-			d = null
 		]
 		
 	]
@@ -865,7 +859,7 @@ probe "hid_init1"
 	][
 		devs: enumerate 0 0
 		cur_dev: devs 
-		until [
+		while [cur_dev <> null] [
 probe HIWORD(cur_dev/id)
 probe LOWORD(cur_dev/id)
 			if all [HIWORD(cur_dev/id) = vendor-id  LOWORD(cur_dev/id) = product-id] [
@@ -882,7 +876,6 @@ probe ["cur_dev/path:" cur_dev/path]
 				]
 			]
 			cur_dev: cur_dev/next
-			cur_dev = null
 		]
 
 		if path_to_open <> null [
@@ -959,6 +952,7 @@ probe 6
 			;--create the buffers for receiving data 
 			dev/max_input_report_len: get_max_report_length dev/device_handle
 			dev/input_report_buf:  allocate dev/max_input_report_len
+			set-memory dev/input_report_buf null-byte dev/max_input_report_len
 probe 7
 			;--create the run loop mode for this device.
 			;--printing the reference seems to work
@@ -983,7 +977,7 @@ probe 10
 			;--start the read thread
 			pthread_create :dev/thread  
 										null	
-										as int-ptr! :read_thread
+										read_thread
 										as int-ptr! dev 
 probe 11			
 			;--wait here for the read thread to be initialized
@@ -1052,10 +1046,9 @@ probe 13
 			;--find the end of the list and attach
 			cur: dev/input_reports 
 			num_queued: 0
-			until [
+			while [cur/next <> null] [
 				cur: cur/next 
 				num_queued: num_queued + 1
-				cur/next = null
 			]
 			cur/next: rpt 
 
@@ -1106,7 +1099,7 @@ probe 13
 		
 		;--create the runloopsource which is used to signal the event loop to\
 		;--stop when hid_close is called
-		memset as int-ptr! ctx 0 size? CFRunLoopSourceContext
+		set-memory as byte-ptr! ctx null-byte size? CFRunLoopSourceContext
 		ctx/version: 0
 		ctx/info: as int-ptr! dev 
 		ctx/perform: as int-ptr! :perform_signal_callback
@@ -1121,9 +1114,7 @@ probe 13
 		;--notify the main thread that the read thread is up and running
 		pthread_barrier_wait as pthread_barrier_t :dev/barrier
 		
-		;--run the event loop so it can be stopped from hid_close
-		;--and on device disconnection
-		until [
+		while [all [dev/shutdown_thread = 0 dev/disconnected = 0]][
 			code: CFRunLoopRunInMode dev/run_loop_mode 1000.0 false
 			;--return if the device has been disconnected
 			if code = 1 [
@@ -1136,7 +1127,7 @@ probe 13
 				dev/shutdown_thread: 1
 				break
 			]
-			any [dev/shutdown_thread = 0 dev/disconnected = 0]
+			
 		]
 		pthread_mutex_lock :dev/mutex
 		pthread_cond_broadcast :dev/condition
@@ -1280,7 +1271,7 @@ probe 13
 					ts/sec: ts/sec + 1
 					ts/nsec: ts/nsec - 1000000000
 				]
-				res: cond_timedwait dev :dev/condition :dev/mutex :ts 
+				res: cond_timedwait dev :dev/condition :dev/mutex ts 
 				case [
 					res = 0 [bytes_read: return_data dev data length]
 					res = ETIMEDOUT [bytes_read: 0]
@@ -1303,11 +1294,10 @@ probe 13
 		/local
 			res 	[integer!]
 	][
-		until [
+		while [dev/input_reports = null] [
 			res: pthread_cond_wait cond mutex 
 			if res <> 0 [return res ]
 			if  any [dev/shutdown_thread <> 0 dev/disconnected <> 0][return -1]
-			dev/input_reports <> null
 		]
 		0	
 	]
@@ -1321,11 +1311,10 @@ probe 13
 		/local 
 			res 	[integer!]
 	][
-		until [
+		while [dev/input_reports = null] [
 			res: pthread_cond_timedwait cond mutex abstime
 			if res <> 0 [return res ]
 			if any [dev/shutdown_thread <> 0 dev/disconnected <> 0][return -1]
-			dev/input_reports <> null
 		]
 		0
 	]
