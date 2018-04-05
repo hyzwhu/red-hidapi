@@ -388,7 +388,6 @@ hid: context [
 	
 	pthread_barrier_init: func [
 		barrier 	[pthread_barrier_t]
-		attr 		[pthread_barrier_t]
 		count 		[integer!]
 		return: 	[integer!]
 	][
@@ -458,8 +457,8 @@ hid: context [
 
 		pthread_mutex_init :dev/mutex null
 		pthread_cond_init :dev/condition null
-		pthread_barrier_init as pthread_barrier_t :dev/barrier null 2
-		pthread_barrier_init as pthread_barrier_t :dev/shutdown_barrier null 2
+		pthread_barrier_init as pthread_barrier_t :dev/barrier 2
+		pthread_barrier_init as pthread_barrier_t :dev/shutdown_barrier 2
 		dev
 	]
 
@@ -973,6 +972,7 @@ probe "before hid-free-enumeration"
 ?? b	
 			;--wait here for the read thread to be initialized
 			pthread_barrier_wait as pthread_barrier_t :dev/barrier
+probe "main thread wait done"
 			IOObjectRelease entry
 			return dev 									
 		][
@@ -1098,7 +1098,7 @@ probe "before hid-free-enumeration"
 		ctx/info: as int-ptr! dev 
 		ctx/perform: as int-ptr! :perform_signal_callback
 dump-hex as byte-ptr! ctx
-		dev/source: CFRunLoopSourceCreate as int-ptr! kCFAllocatorDefault 0 as int-ptr! ctx
+		dev/source: CFRunLoopSourceCreate as int-ptr! kCFAllocatorDefault 0 as int-ptr! :ctx
 		CFRunLoopAddSource  CFRunLoopGetCurrent dev/source dev/run_loop_mode
 
 		;--stire off the run loop so it can be stopped from hid_close
@@ -1120,7 +1120,7 @@ probe "hello4"
 probe ["code:"code]
 probe " "
 probe " "
-			code: CFRunLoopRunInMode dev/run_loop_mode as float! 1000 false
+			code: CFRunLoopRunInMode dev/run_loop_mode 1000.0 false
 probe  "hello2223"
 probe ["code:"code]
 			;--return if the device has been disconnected
@@ -1149,6 +1149,7 @@ probe ["dev/mutex"dev/mutex	]
 	]
 
 	perform_signal_callback: func [
+		[cdecl]
 		context 	[int-ptr!]
 		/local
 			dev 	[hid-device]
@@ -1276,8 +1277,8 @@ probe 3
 			milliseconds > 0 [ probe 4
 				gettimeofday  tv  0
 				TIMEVAL_TO_TIMESPEC tv ts 
-				ts/sec: ts/sec + milliseconds / 1000
-				ts/nsec: ts/nsec + (milliseconds % 1000) * 1000000
+				ts/sec: ts/sec + (milliseconds / 1000)
+				ts/nsec: ts/nsec + ((milliseconds % 1000) * 1000000)
 				if ts/nsec >= 1000000000 [
 					ts/sec: ts/sec + 1
 					ts/nsec: ts/nsec - 1000000000
