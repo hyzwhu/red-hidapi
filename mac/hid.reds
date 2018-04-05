@@ -1276,8 +1276,8 @@ probe 3
 			milliseconds > 0 [ probe 4
 				gettimeofday  tv  0
 				TIMEVAL_TO_TIMESPEC tv ts 
-				ts/sec: ts/sec + milliseconds / 1000
-				ts/nsec: ts/nsec + (milliseconds % 1000) * 1000000
+				ts/sec: ts/sec + (milliseconds / 1000)
+				ts/nsec: ts/nsec + ((milliseconds % 1000) * 1000000)
 				if ts/nsec >= 1000000000 [
 					ts/sec: ts/sec + 1
 					ts/nsec: ts/nsec - 1000000000
