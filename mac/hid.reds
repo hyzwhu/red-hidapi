@@ -1268,8 +1268,11 @@ hid: context [
 	]
 
 	close: func [
-		dev 	[hid-device]
+		device 	[int-ptr!]
+		/local
+			dev [hid-device]
 	][
+		dev: as hid-device device
 		;--disconnect the report callback before close
 		if dev/disconnected = 0 [
 			IOHIDDeviceRegisterInputReportCallback 	dev/device_handle
@@ -1305,7 +1308,7 @@ hid: context [
 		;--if it's been unplugged, then calling IOHIDDeviceClose will crash
 		pthread_mutex_lock :dev/mutex
 		while [dev/input_reports <> null] [
-			return_data dev null-byte 0
+			return_data dev null 0
 		]
 		pthread_mutex_unlock :dev/mutex
 		CFRelease dev/device_handle
