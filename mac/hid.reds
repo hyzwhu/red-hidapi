@@ -1350,15 +1350,4 @@ hid: context [
 		;--free the structure itself
 		free as byte-ptr! dev 
 	]
-
-
-
-
-
-
-
-
-
-
-
 ]
