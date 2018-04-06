@@ -20,8 +20,6 @@ hid: context [
 	#define WIDE_CHAR_SIZE						4
 	#define kIOHIDOptionsTypeSeizeDevice		1
 	#define kCFStringEncodingASCII				00000600h
-	;#define kCFAllocatorDefault 				null
-	;#define kIOMasterPortDefault				null
 	#define kIOHIDReportTypeOutput 				1 
 	#define	ETIMEDOUT							60
 	
@@ -216,6 +214,11 @@ hid: context [
 					restrict3 	[timespec!]
 					return: 	[integer!]
 				]
+				pthread_join: "pthread_join" [
+					thread 		[pthread_t]
+					retval 		[int-ptr!]
+					return: 	[integer!]
+				]
 		]
 		"/System/Library/Frameworks/IOKit.framework/IOKit" cdecl [
 			IOHIDDeviceGetProperty: "IOHIDDeviceGetProperty" [
@@ -300,6 +303,11 @@ hid: context [
 				reportLength	[integer!]
 				return: 		[integer!]
 				]
+			IOHIDDeviceUnscheduleFromRunLoop: "IOHIDDeviceUnscheduleFromRunLoop" [
+				device 			[int-ptr!]
+				runloop			[int-ptr!]
+				runLoopMode		[int-ptr!]
+			]
 		]
 		"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation" cdecl [
 			kCFRunLoopDefaultMode: "kCFRunLoopDefaultMode" [integer!]
@@ -359,6 +367,9 @@ hid: context [
 			CFRunLoopGetCurrent: "CFRunLoopGetCurrent" [
 				return: 				[int-ptr!]
 			]
+			CFRunLoopGetMain: "CFRunLoopGetMain" [
+				return: 				[int-ptr!]
+			]
 			CFRunLoopStop: "CFRunLoopStop" [
 				rl   		[int-ptr!]
 			]
@@ -372,6 +383,12 @@ hid: context [
 				rl 			[int-ptr!]
 				source 		[int-ptr!]
 				mode 		[int-ptr!]
+			]
+			CFRunLoopSourceSignal: "CFRunLoopSourceSignal" [
+				source 		[int-ptr!]
+			]
+			CFRunLoopWakeUp: "CFRunLoopWakeUp" [
+				rl 			[int-ptr!]
 			]
 
 		]
@@ -420,10 +437,7 @@ hid: context [
 		return: 		[integer!]
 	][
 		pthread_mutex_lock :barrier/mutex
-		probe "lock-------- pthread_barrier_wait"
 		barrier/count: barrier/count + 1
-		probe ["barrier/count"barrier/count]
-		probe ["barrier/trip_count"barrier/trip_count]
 		either barrier/count >= barrier/trip_count [
 			barrier/count: 0
 			pthread_cond_broadcast :barrier/cond
@@ -575,7 +589,6 @@ hid: context [
 			len1 			[integer!]
 	][
 		used_buf_len: 0
-		probe ["len:" len]
 		if len = 0 [
 			return 0
 		]
@@ -659,9 +672,7 @@ hid: context [
 	init_hid_manager: func [
 		return: 	[integer!]
 	][
-probe "before hid_mgr"
 		hid_mgr: IOHIDManagerCreate as int-ptr! kCFAllocatorDefault 0
-?? hid_mgr
 		if hid_mgr <> null [
 			IOHIDManagerSetDeviceMatching hid_mgr null
 			IOHIDManagerScheduleWithRunLoop hid_mgr 
@@ -676,11 +687,9 @@ probe "before hid_mgr"
 	hid_init: func [
 		return: 	[integer!]
 	][
-?? hid_mgr
 		if hid_mgr = null [
 			return init_hid_manager 
 		]
-probe "hid_init1"
 		return 0
 	]
 
@@ -701,7 +710,6 @@ probe "hid_init1"
 	][
 		until [
 			res: CFRunLoopRunInMode as int-ptr! kCFRunLoopDefaultMode 0.001 false
-			probe ["res!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!---------"res]
 			any [res = 1  res = 3]
 		]
 	]
@@ -739,7 +747,6 @@ probe "hid_init1"
 			return null
 		]
 		;--give the iohidmanager a chance to updata itself
-		;probe "before process pending"
 		process_pending_events
 
 		;--get a list of the devices 
@@ -752,18 +759,16 @@ probe "hid_init1"
 		CFSetGetValues device_set device_array ;--typecasting (const void **)
 
 
-		;--irerate over each device, making an entry for it
+		;--interate over each device, making an entry for it
 		i: 1
 		while [i < (num_devices + 1)] [
 			dev: as int-ptr! device_array/i
-; probe ["dev:" dev]
 			if dev = null [
 				continue 
 			]
 			dev_vid: get_vendor_id dev 
 			dev_pid: get_product_id dev 
-; probe ["vendor_id:" dev_vid]
-; probe ["product_id:" dev_pid]
+
 			;--check the vid/pid against the arguments
 
 			if all [
@@ -780,14 +785,10 @@ probe "hid_init1"
 				cur_dev: tmp
 			
 			
-; ?? cur_dev
 			;--get the usage page and usage for this device
 			x: get_int_property dev as c-string! CFSTR(kIOHIDPrimaryUsagePageKey)
-; probe 1
 			y: get_int_property dev as c-string! CFSTR(kIOHIDPrimaryUsageKey)
-; probe 2
 			cur_dev/usage: x << 16 or y  
-; probe "cur_dev/usage!!!!!!!!!!!!!!!!"
 			;--fill out the record
 			cur_dev/next: null
 
@@ -800,37 +801,17 @@ probe "hid_init1"
 	
 			;--serial number
 			get_serial_number dev buf BUF_LEN
-;probe "buf:"
-;wprintf buf
-;probe " "
 			cur_dev/serial-number: dup_wcs buf
-; probe "cur_dev/serial-number:" 
-; wprintf cur_dev/serial-number
-; probe "serial-number finished"
-
 			;--manufacturer and product strings
 			get_manufacturer_string dev buf BUF_LEN
 			cur_dev/manufacturer-string: dup_wcs buf 
-; probe "cur_dev/manufacturer-string:"
-; wprintf cur_dev/manufacturer-string
-; probe " "
 			get_product_string dev buf BUF_LEN
-;dump-hex as byte-ptr! buf 
 			cur_dev/product-string: dup_wcs buf 
-;dump-hex as byte-ptr! cur_dev/product-string
-; probe "cur_dev/product-string:"
-; wprintf cur_dev/product-string
-; probe " "
-; probe " "
-; probe " "
-; probe " "
+
 			;--vip/pid
 			cur_dev/id: dev_vid << 16 or dev_pid
-; probe "before get_int"
 			;--release number 
-; probe [dev " " CFSTR(kIOHIDVersionNumberKey)]
-			cur_dev/release-number: get_int_property dev as c-string! CFSTR(kIOHIDVersionNumberKey)							 
-; probe "after get_int"			
+			cur_dev/release-number: get_int_property dev as c-string! CFSTR(kIOHIDVersionNumberKey)							 		
 			;--interface number
 			cur_dev/interface-number: -1
 		]
@@ -871,14 +852,9 @@ probe "hid_init1"
 			]
 			cur_dev: cur_dev/next
 		]
-
 		if path_to_open <> null [
-probe "helloworld"
 			handle: open_path path_to_open
-probe "after open_path"
 		]
-
-probe "before hid-free-enumeration"	
 		hid-free-enumeration devs 
 		as int-ptr! handle	
 	]
@@ -895,7 +871,6 @@ probe "before hid-free-enumeration"
 			tmp 	[c-string!]
 			tmp1 	[c-string!]
 	][
-		probe ["hid_device's size is:" size? hid-device]
 		entry: null
 		dev: new-hid-device
 		str: as c-string! system/stack/allocate 8
@@ -914,14 +889,10 @@ probe "before hid-free-enumeration"
 			]
 			free-hid-device dev 
 			return null	
-			;-------------return_error
+			;--return_error
 		]
-?? entry
-; IOHIDDeviceCreate as int-ptr! kCFAllocatorDefault entry
 		;--create and IOGIDDevice for entry
-; IOHIDDeviceCreate null entry
 		dev/device_handle: IOHIDDeviceCreate as int-ptr! kCFAllocatorDefault entry
-;IOHIDDeviceCreate null entry
 		if dev/device_handle = null [
 			;--return_error
 			if dev/device_handle <> null [
@@ -932,11 +903,10 @@ probe "before hid-free-enumeration"
 			]
 			free-hid-device dev 
 			return null	
-			;-------------return_error
+			;--return_error
 		]
 		;--open the IOHIDDevice
 		ret: IOHIDDeviceOpen dev/device_handle kIOHIDOptionsTypeSeizeDevice
-?? ret
 		either ret = 0 	[ ;--return success
 			;--create the buffers for receiving data 
 			dev/max_input_report_len: get_max_report_length dev/device_handle
@@ -945,11 +915,6 @@ probe "before hid-free-enumeration"
 			;--create the run loop mode for this device.
 			;--printing the reference seems to work
 			sprintf [str "HIDAPI_%p" dev/device_handle]
-; 			tmp: "HIDAPI_"
-; 			tmp1: as c-string! dev/device_handle
-; probe tmp1
-; 			copy-memory as byte-ptr! str as byte-ptr! tmp length? tmp
-; 			copy-memory as byte-ptr! (str + 6) as byte-ptr! tmp1 length? tmp1
 			dev/run_loop_mode: CFStringCreateWithCString 	0 
 															str
 															kCFStringEncodingASCII
@@ -969,10 +934,8 @@ probe "before hid-free-enumeration"
 										null	
 										as int-ptr! :read_thread
 										as int-ptr! dev 	
-?? b	
 			;--wait here for the read thread to be initialized
 			pthread_barrier_wait as pthread_barrier_t :dev/barrier
-probe "main thread wait done"
 			IOObjectRelease entry
 			return dev 									
 		][
@@ -1017,7 +980,6 @@ probe "main thread wait done"
 			cur 		[input_report]
 			num_queued	[integer!]
 	][
-		probe "begain to hid_report_callback!!!!!!!!!!!!!!!!!!!!!!!!"
 		dev: as hid-device context   
 		;--make a new input report object 
 		rpt: as input_report allocate size? input_report
@@ -1028,7 +990,6 @@ probe "main thread wait done"
 
 		;--lock this section
 		pthread_mutex_lock :dev/mutex
-		probe "lock------------hid_report_callback"
 		;--attach the new report object to the end of the list 
 		either dev/input_reports = null [
 			dev/input_reports: rpt
@@ -1089,15 +1050,12 @@ probe "main thread wait done"
 		IOHIDDeviceScheduleWithRunLoop  dev/device_handle
 										CFRunLoopGetCurrent
 										dev/run_loop_mode
-		probe "begain devic's runloop~~~~~~~~~~"
 		;--create the runloopsource which is used to signal the event loop to\
 		;--stop when hid_close is called
-?? dev 
 		set-memory as byte-ptr! ctx null-byte size? CFRunLoopSourceContext
 		ctx/version: 0
 		ctx/info: as int-ptr! dev 
 		ctx/perform: as int-ptr! :perform_signal_callback
-dump-hex as byte-ptr! ctx
 		dev/source: CFRunLoopSourceCreate as int-ptr! kCFAllocatorDefault 0 as int-ptr! :ctx
 		CFRunLoopAddSource  CFRunLoopGetCurrent dev/source dev/run_loop_mode
 
@@ -1106,29 +1064,16 @@ dump-hex as byte-ptr! ctx
 		dev/run_loop: CFRunLoopGetCurrent
 		;--notify the main thread that the read thread is up and running
 		a: pthread_barrier_wait as pthread_barrier_t :dev/barrier
-?? a
-probe  dev/shutdown_thread
-probe 	dev/disconnected
-probe  "hello2"	
-probe 	" "
-probe 	" "	
 		;--run the event loop so it can be stopped from hid_close
 		;--and on device disconnection
 
 		while [all [dev/shutdown_thread = 0 dev/disconnected = 0]] [
-probe "hello4"
-probe ["code:"code]
-probe " "
-probe " "
 			code: CFRunLoopRunInMode dev/run_loop_mode 1000.0 false
-probe  "hello2223"
-probe ["code:"code]
 			;--return if the device has been disconnected
 			if code = 1 [
 				dev/disconnected: 1
 				break
 			]
-
 			;--break if the run loop returns finished or stopped
 			if all [code <> 3  code <> 4] [
 				dev/shutdown_thread: 1
@@ -1136,13 +1081,8 @@ probe ["code:"code]
 			]
 		]
 		pthread_mutex_lock :dev/mutex
-		probe "lock------read_thread"
-probe ["dev/mutex"dev/mutex]
 		pthread_cond_broadcast :dev/condition
-probe ["dev/condition" dev/condition]
 		pthread_mutex_unlock :dev/mutex
-probe ["dev/mutex"dev/mutex	]	
-
 		pthread_barrier_wait as pthread_barrier_t  :dev/shutdown_barrier
 
 		null		
@@ -1239,16 +1179,13 @@ probe ["dev/mutex"dev/mutex	]
 		dev: as hid-device device
 		bytes_read: -1
 		pthread_mutex_lock :dev/mutex
-		probe "lock-----timeout"
 		if dev/input_reports <> null [
-			probe "dev/inoyt_reports <> null"
 			bytes_read: return_data dev data length
 			;--unlock
 			pthread_mutex_unlock :dev/mutex
 			return bytes_read
 			;--unlock section
 		]
-probe 1
 		if dev/disconnected <> 0 [
 			bytes_read: -1
 			;--unlock
@@ -1256,7 +1193,6 @@ probe 1
 			return bytes_read
 			;--unlock section
 		]
-probe 2
 		if dev/shutdown_thread <> 0 [
 			bytes_read: -1
 			;--unlock
@@ -1264,7 +1200,6 @@ probe 2
 			return bytes_read
 			;--unlock section
 		]
-probe 3
 		case [ 
 			milliseconds = -1 [
 				res: cond_wait dev :dev/condition :dev/mutex
@@ -1274,7 +1209,7 @@ probe 3
 					bytes_read: -1
 				]
 			]
-			milliseconds > 0 [ probe 4
+			milliseconds > 0 [ 
 				gettimeofday  tv  0
 				TIMEVAL_TO_TIMESPEC tv ts 
 				ts/sec: ts/sec + (milliseconds / 1000)
@@ -1330,6 +1265,87 @@ probe 3
 			if any [dev/shutdown_thread <> 0 dev/disconnected <> 0][return -1]
 		]
 		0
+	]
+
+	close: func [
+		dev 	[hid-device]
+	][
+		;--disconnect the report callback before close
+		if dev/disconnected = 0 [
+			IOHIDDeviceRegisterInputReportCallback 	dev/device_handle
+													as byte-ptr! dev/input_report_buf
+													dev/max_input_report_len
+													null
+													as int-ptr! dev
+			IOHIDDeviceRegisterRemovalCallback	dev/device_handle
+												null
+												as int-ptr! dev 	
+			IOHIDDeviceUnscheduleFromRunLoop	dev/device_handle
+												dev/run_loop
+												dev/run_loop_mode
+			IOHIDDeviceScheduleWithRunLoop		dev/device_handle
+												CFRunLoopGetMain
+												as int-ptr! kCFRunLoopDefaultMode
+		]
+
+		;--cause read_thread to stop
+		dev/shutdown_thread: 1
+
+		;--wake up the run thread's event loop so that the thread can exit
+		CFRunLoopSourceSignal dev/source
+		CFRunLoopWakeUp	dev/run_loop
+
+		;--notify the read thread that it can shut down now
+		pthread_barrier_wait  as pthread_barrier_t  :dev/shutdown_barrier
+
+		;--wait for read_thread to end
+		pthread_join dev/thread null
+
+		;--close the os handle to the device, byt only if it's not been unplugged
+		;--if it's been unplugged, then calling IOHIDDeviceClose will crash
+		pthread_mutex_lock :dev/mutex
+		while [dev/input_reports <> null] [
+			return_data dev null-byte 0
+		]
+		pthread_mutex_unlock :dev/mutex
+		CFRelease dev/device_handle
+		free_hid_device dev 
+	]
+	
+	free_hid_device: func [
+		dev 	[hid-device]
+		/local
+			rpt		[input_report]
+			next 	[input_report]
+	][
+		;--delete any input reports still left over
+		rpt: dev/input_reports
+		while [rpt <> null] [
+			next: rpt/next
+			free rpt/data
+			free as byte-ptr! rpt
+			rpt: next
+		]
+
+		;--free the string and report buffer. the check for null
+		;--is necessary here as CFRelease doesn't handle null like 
+		;--free and others do
+		if dev/run_loop_mode <> null [
+			CFRelease dev/run_loop_mode
+		]
+		if dev/source <> null [
+			CFRelease dev/source
+		]
+		free as byte-ptr! dev/input_report_buf
+
+		;--clean up the thread objects
+		pthread_barrier_destroy as pthread_barrier_t :dev/shutdown_barrier
+		pthread_barrier_destroy as pthread_barrier_t :dev/barrier
+		pthread_cond_destroy :dev/condition
+		pthread_mutex_destroy :dev/mutex
+
+		;--free the structure itself
+		free as byte-ptr! dev 
 	]
 
 
