@@ -1,12 +1,6 @@
 Red/System []
 
 hid: context [
-	#define	_IOC(inout group num len)   (inout | ((len & IOCPARM_MASK) << 16) | ((group) << 8) | (num))
-	#define HIDIOCSFEATURE(len)    _IOC(_IOC_WRITE|_IOC_READ #"H"  0x06  len)
-	#define HIDIOCGFEATURE(len)    _IOC(_IOC_WRITE|_IOC_READ #"H"  0x07  len)
-
-	;--usb hid device property names
-	device_string_names ["manufacturer"  "product"	"serial"]
 
 	;--symbolic names for the properties above
 	#define DEVICE_STRING_MANUFACTURER  0
@@ -14,6 +8,8 @@ hid: context [
 	#define DEVICE_STRING_SERIAL		2
 	#define DEVICE_STRING_COUNT			3
 
+	;--usb hid device property names
+	device_string_names: ["manufacturer" "product"	"serial"]
 	hid-device-info: alias struct! [
 			path 				[c-string!]
 			id 					[integer!] ;vendor-id and product-id
@@ -31,14 +27,10 @@ hid: context [
 				src 	[c-string!]
 				dst 	[c-string!]
 				len 	[integer!]
+				return: [integer!]
 			]
 			wcsdup: "wcsdup" [
 				s1 		[c-string!]
-				return: [c-string!]
-			]
-			udev_device_get_sysattr_value: "udev_device_get_sysattr_value" [
-				dev 	[int-ptr!]
-				sysattr [c-string!]
 				return: [c-string!]
 			]
 			setlocale: "setlocale" [
@@ -115,6 +107,7 @@ hid: context [
 			]
 			sscanf: "sscanf" [
 				[variadic]
+				return: 	[integer!]
 			]
 			strtol: "strtol" [
 				str 		[c-string!]
@@ -129,6 +122,17 @@ hid: context [
 			udev_unref: "udev_unref" [
 				udev 			[int-ptr!]
 				return: 		[int-ptr!]
+			]
+			wprintf: "wprintf" [
+					[variadic]
+					return: 	[integer!]
+			]
+		]
+		"libudev.so.1" cdecl[
+			udev_device_get_sysattr_value: "udev_device_get_sysattr_value" [
+				dev 	[int-ptr!]
+				sysattr [c-string!]
+				return: [c-string!]
 			]
 		]
 	]
@@ -166,10 +170,17 @@ hid: context [
 			if -1 = wlen [
 				return wcsdup ""
 			]
-			ret: allocate (wlen + 1) * 4   ;--sizeof widechar
-			mbstowcs ret utf8 (wlen + 1)
-			a: wlen + 1
-			ret/a: 0
+			ret: as c-string! allocate (wlen + 1) * 4   ;--sizeof widechar
+			set-memory as byte-ptr! ret null-byte (wlen + 1) * 4
+			mbstowcs ret utf8 (wlen + 1) 
+			a: 4 * wlen + 1
+			ret/a: null-byte
+			a: a + 1
+			ret/a: null-byte
+			a: a + 1
+			ret/a: null-byte
+			a: a + 1
+			ret/a: null-byte
 		]
 		ret 
 	]
@@ -208,7 +219,7 @@ hid: context [
 			either (key and 000000F0h) = 000000F0h [
 				either (i + 1) < (size + 2) [
 					a: i + 1
-					data_len: report_descriptor/a 
+					data_len: as integer! report_descriptor/a 
 				][
 					data_len: 0
 				]
@@ -244,12 +255,12 @@ hid: context [
 		bus_type			[int-ptr!]
 		vendor_id			[int-ptr!]
 		product_id			[int-ptr!]
-		serial_number_utf8	[c-string!]
-		product_name_utf8	[c-string!]
+		serial_number_utf8	[int-ptr!]
+		product_name_utf8	[int-ptr!]
 		return: 			[integer!]
 		/local
 			tmp				[c-string!]
-			saveptr			[c-string!]
+			saveptr			[integer!]
 			line 			[c-string!]
 			key 			[c-string!]
 			value			[c-string!]
@@ -261,40 +272,40 @@ hid: context [
 		found_id: 0 
 		found_serial: 0
 		found_name: 0 
+		saveptr: 0
 		tmp: strdup uevent
-		line: strtok_r tmp "\n" :saveptr
+		line: strtok_r tmp "^(0A)" :saveptr
 		while [line <> null] [
 			;--line: "key=value"
 			key: line
-			value: strchr line as integer! #"="
+			value: strchr line as integer! #"=" 
 			if value = null [
 				;--goto next_line 
-				line: strtok_r null "\n" :saveptr 
+				line: strtok_r null "^(0A)" :saveptr 
 			]
 			value/1: null-byte
 			value: value + 1
-			
 			case [
 				(strcmp key "HID_ID") = 0 [
-					ret: sscanf value "%x:%hx:%hx" bus_type vendor_id product_id
+					ret: sscanf [value "%x:%hx:%hx" bus_type vendor_id product_id]
 					if ret = 3 [
 						found_id: 1
 					]	
 				]
 				(strcmp key "HID_NAME") = 0 [
-					product_name_utf8: strdup value
+					product_name_utf8/value: as integer! strdup value
 					found_name: 1
 				]
 				(strcmp key "HID_UNIQ") = 0 [
-					serial_number_utf8: strdup value
+					serial_number_utf8/value: as integer! strdup value
 					found_serial: 1
 				]
+				true []
 			]
-			line: strtok_r null "\n" :saveptr	
+			line: strtok_r null "^(0A)" :saveptr
 		]
-
 		free as byte-ptr! tmp 
-		all [found_id found_name found_serial]
+		as integer! (all [found_id <> 0 found_name <> 0 found_serial <> 0])
 		
 	]
 
@@ -303,27 +314,29 @@ hid: context [
 		product_id 		[integer!]
 		return: 		[hid-device-info]
 		/local 	
-			udev 				[int-ptr!]
-			enumerate 			[int-ptr!]
-			devices 			[int-ptr!]
-			dev_list_entry		[int-ptr!]
-			root 				[hid-device-info]
-			cur_dev 			[hid-device-info]
-			prev_dev			[hid-device-info]
-			sysfs_path			[c-string!]
-			dev_path			[c-string!]
-			str					[c-string!]
-			raw_dev				[int-ptr!]
-			hid_dev 			[int-ptr!]
-			usb_dev 			[int-ptr!]
-			intf_dev 			[int-ptr!]
-			dev_vid				[integer!]
-			dev_pid 			[integer!]
-			serial_number_utf8	[c-string!]
-			product_name_utf8	[c-string!]
-			bus_type			[integer!]
-			result				[integer!]
-			tmp 				[hid-device-info]
+			udev 					[int-ptr!]
+			enumerate 				[int-ptr!]
+			devices 				[int-ptr!]
+			dev_list_entry			[int-ptr!]
+			root 					[hid-device-info]
+			cur_dev 				[hid-device-info]
+			prev_dev				[hid-device-info]
+			sysfs_path				[c-string!]
+			dev_path				[c-string!]
+			str						[c-string!]
+			raw_dev					[int-ptr!]
+			hid_dev 				[int-ptr!]
+			usb_dev 				[int-ptr!]
+			intf_dev 				[int-ptr!]
+			dev_vid					[integer!]
+			dev_pid 				[integer!]
+			serial_number_utf8		[c-string!]
+			product_name_utf8		[c-string!]
+			bus_type				[integer!]
+			result					[integer!]
+			tmp 					[hid-device-info]
+			product_name_utf8_fake 	[integer!]
+			serial_number_utf8_fake	[integer!]
 	][
 		root: null
 		cur_dev: null
@@ -336,19 +349,25 @@ hid: context [
 			probe "can not create udev"
 			return null
 		]
-
 		;--create a list of the device in the 'hidraw' subsystem
 		enumerate: udev_enumerate_new udev
 		udev_enumerate_add_match_subsystem enumerate "hidraw"
 		udev_enumerate_scan_devices enumerate
-		devices: udev_enumerate_get_list_entry enumerate
-		
+		devices: udev_enumerate_get_list_entry enumerate	
 		;--fir each item, see if it matchs the vid/pid and 
 		;--if so create a udev_device record for it
 		dev_list_entry: devices 
 		while [dev_list_entry <> null] [
+probe "in the loop"
 			;--get the filename of the /sys entry for the device 
 			;--and create a udev_device object(dev) representing it
+			serial_number_utf8: null
+			product_name_utf8: null
+			bus_type: 0
+			dev_vid: 0
+			dev_pid: 0
+			serial_number_utf8_fake: 0
+			product_name_utf8_fake: 0
 			sysfs_path: udev_list_entry_get_name dev_list_entry
 			raw_dev: udev_device_new_from_syspath udev sysfs_path
 			dev_path: udev_device_get_devnode raw_dev
@@ -356,7 +375,6 @@ hid: context [
 			hid_dev: udev_device_get_parent_with_subsystem_devtype 	raw_dev
 																	"hid"
 																	null
-
 			if hid_dev = null [
 				;--unable to find parent hid device 
 				;--go to next 
@@ -370,9 +388,14 @@ hid: context [
 										:bus_type
 										:dev_vid
 										:dev_pid
-										serial_number_utf8
-										product_name_utf8
-
+										:serial_number_utf8_fake
+										:product_name_utf8_fake 
+			serial_number_utf8: as c-string! serial_number_utf8_fake
+			product_name_utf8: as c-string! product_name_utf8_fake 
+?? serial_number_utf8
+?? product_name_utf8
+probe "finish parse uevent info"
+?? result
 			if result = 0 [
 				;--go to next 
 				free as byte-ptr! serial_number_utf8
@@ -380,7 +403,7 @@ hid: context [
 				udev_device_unref raw_dev 
 				;--go to next
 			]
-
+?? bus_type
 			if all [bus_type <> 3 bus_type <> 5] [
 				;--go to next 
 				free as byte-ptr! serial_number_utf8
@@ -388,9 +411,13 @@ hid: context [
 				udev_device_unref raw_dev 
 				;--go to next
 			]
-
-			if all [any vendor_id = 0  vendor_id = dev_vid]	
-			[any product_id = 0 product_id = dev_pid] [
+?? dev_pid
+?? dev_vid
+			if all [
+				any [vendor_id = 0  vendor_id = dev_vid]	
+				any [product_id = 0 product_id = dev_pid]
+				][
+probe "in the select"
 				tmp: as hid-device-info allocate size? hid-device-info
 				either cur_dev <> null [
 					cur_dev/next: tmp
@@ -415,7 +442,7 @@ hid: context [
 
 				;--interface number
 				cur_dev/interface-number: -1
-
+?? bus_type
 				switch bus_type [
 					3 [
 						usb_dev: udev_device_get_parent_with_subsystem_devtype 	raw_dev
@@ -443,12 +470,13 @@ hid: context [
 
 						;--manufacturer and product strings 
 						cur_dev/manufacturer-string: copy_udev_string 	usb_dev
-																		device_string_names/1
+																		as c-string! device_string_names/1
 
-						cur_dev/product-string: copy_udev_string usb_dev device_string_names/2				 
-
+						cur_dev/product-string: copy_udev_string 	usb_dev 
+																	as c-string! device_string_names/2				 
 						;--release number
 						str: udev_device_get_sysattr_value usb_dev "bcdDevice"
+?? str
 						cur_dev/release-number: either str <> null [strtol str null 16][0]
 
 						;--get a handle to the interface's udev node
@@ -459,22 +487,23 @@ hid: context [
 							str: udev_device_get_sysattr_value intf_dev "bInterfaceNumber"
 							cur_dev/interface-number: either str <> null [strtol str null 16][-1]
 						]
-						break
+						
 					]
 					5 [
 						cur_dev/manufacturer-string: wcsdup ""
 						cur_dev/product-string: utf8_to_wchar_t product_name_utf8
-						break
+				
 					]
-					default [break]
+					default []
 				]
 			]
 			;--go to next 
 			free as byte-ptr! serial_number_utf8
 			free as byte-ptr! product_name_utf8
 			udev_device_unref raw_dev 
-			;--go to next			
-			dev_list_entry: udev_list_entry_get_next
+			;--go to next		
+probe "go to the next"	
+			dev_list_entry: udev_list_entry_get_next dev_list_entry
 		]
 		udev_enumerate_unref enumerate
 		udev_unref udev 
