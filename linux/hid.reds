@@ -7,6 +7,8 @@ hid: context [
 	#define DEVICE_STRING_PRODUCT       1
 	#define DEVICE_STRING_SERIAL		2
 	#define DEVICE_STRING_COUNT			3
+	#define LOWORD(param) (param and FFFFh << 16 >> 16)   
+	#define HIWORD(param) (param >> 16)
 
 	;--usb hid device property names
 	device_string_names: ["manufacturer" "product"	"serial"]
@@ -21,6 +23,11 @@ hid: context [
 			interface-number	[integer!]
 			next				[hid-device-info]
 		]
+	pollfd: alias struct! [
+		fd 			[integer!]
+		events 		[integer!]  ;--events and revents
+	]
+
 	#import [
 		LIBC-file cdecl [
 			mbstowcs: "mbstowcs" [
@@ -127,6 +134,49 @@ hid: context [
 					[variadic]
 					return: 	[integer!]
 			]
+			wcscmp: "wcscmp" [
+				str1 		[c-string!]
+				str2 		[c-string!]
+				return: 	[integer!]
+			]
+			linux-open: "open" [
+				str 		[c-string!]
+				int 		[integer!]
+				return: 	[integer!]
+			]
+			ioctl: "ioctl" [
+				s1 			[integer!]
+				s2 			[integer!]
+				s3 			[int-ptr!]
+				return: 	[integer!]
+			]
+			perror: "perror" [
+				s 			[c-string!]
+			]
+			linux-write: "write" [
+				fd 			[integer!]
+				buf 		[c-string!]
+				count 		[integer!]
+				return: 	[integer!]
+			]
+			poll: "poll" [
+				fds 		[pollfd]
+				nfds 		[integer!]
+				timeout 	[integer!]
+				return: 	[integer!]
+			]
+			linux-read: "read" [
+				fd 			[integer!]
+				buf 		[c-string!]
+				nbytes 		[integer!]
+				return:		[integer!]
+			]
+			get-errno-ptr: "__errno_location" [
+					return: [int-ptr!]
+				]
+			linux-close: "close" [
+				handle 		[int-ptr!]
+			]
 		]
 		"libudev.so.1" cdecl[
 			udev_device_get_sysattr_value: "udev_device_get_sysattr_value" [
@@ -145,8 +195,9 @@ hid: context [
 	]
 
 	new_hid_device: func [
-		dev 		[hid_device]
 		return: 	[hid_device]
+		/local
+			dev 		[hid_device]
 	][
 		dev: as hid_device allocate size? hid_device
 		dev/device_handle: -1
@@ -502,12 +553,198 @@ probe "in the select"
 			free as byte-ptr! product_name_utf8
 			udev_device_unref raw_dev 
 			;--go to next		
-probe "go to the next"	
 			dev_list_entry: udev_list_entry_get_next dev_list_entry
 		]
 		udev_enumerate_unref enumerate
 		udev_unref udev 
 		root 
+	]
+
+	free_enumeration: func [
+		devs 		[hid-device-info]
+		/local
+			d 		[hid-device-info]
+			next 	[hid-device-info]
+	][
+		d: devs 
+		while [d <> null] [
+			next: d/next
+			free as byte-ptr! d/path
+			free as byte-ptr! d/serial-number
+			free as byte-ptr! d/manufacturer-string
+			free as byte-ptr! d/product-string
+			free as byte-ptr! d 
+			d: next
+		]	
+	]
+
+	open: func [
+		vendor_id		[integer!]
+		product_id		[integer!]
+		serial-number	[c-string!]
+		return: 		[int-ptr!]
+		/local
+			devs 			[hid-device-info]
+			cur_dev			[hid-device-info]
+			path_to_open	[c-string!]
+			handle			[hid_device]
+			id 				[integer!]
+	][
+		path_to_open: null
+		handle: null
+
+		devs: enumerate vendor_id product_id
+		id: vendor_id << 16 + product_id
+		cur_dev: devs 
+		while [cur_dev <> null] [
+			if cur_dev/id = id [
+				either serial-number <> null [
+					if (wcscmp serial-number cur_dev/serial-number) = 0 [
+						path_to_open: cur_dev/path
+						break
+					]
+				][
+					path_to_open: cur_dev/path
+					break
+				]
+
+			]
+			cur_dev: cur_dev/next
+		]
+		if path_to_open <> null [
+			handle: open_path path_to_open
+		]
+		free_enumeration devs 
+		as int-ptr! handle		
+	]
+
+	open_path: func [
+		path			[c-string!]
+		return: 		[hid_device]
+		/local
+			dev 		[hid_device]
+			res			[integer!]
+			desc_size	[integer!]
+			rpt_desc	[int-ptr!]
+	][
+		dev: null
+		hid_init
+		dev: new_hid_device
+		res: 0 
+		desc_size: 0
+		;--open here
+		dev/device_handle: linux-open path 2
+		rpt_desc: system/stack/allocate 1025
+		;--if we have a good handle ,return it 
+		either dev/device_handle > 0 [
+			;--get the report descriptor
+			set-memory as byte-ptr! rpt_desc null-byte 4100
+
+			;--get report descriptor size 
+			res: ioctl dev/device_handle -2147203071 :desc_size
+?? res 
+			if res < 0 [
+				perror "HIDIOCGRDESCSIZE"
+			]
+			rpt_desc/1: desc_size
+			res: ioctl dev/device_handle -1878767614 rpt_desc
+?? res 
+			either res < 0 [
+				perror "HIDIOCGRDESC"
+			][
+				dev/uses_numbered_reports: uses_numbered_reports 	as byte-ptr! (rpt_desc + 1)
+																	rpt_desc/1
+probe  	dev/uses_numbered_reports
+			]
+			return dev 
+		][
+			free as byte-ptr! dev 
+			return null
+		]
+	]
+
+	write: func [
+		device 		[int-ptr!]
+		data 		[c-string!]
+		length 		[integer!]
+		return: 	[integer!]
+		/local
+			dev 			[hid_device]
+			bytes_written	[integer!]
+	][
+		dev: as hid_device device
+		bytes_written: linux-write dev/device_handle data length
+		bytes_written
+	]
+
+	read_timeout: func [
+		device 			[int-ptr!]
+		data 			[c-string!]
+		length 			[integer!]
+		milliseconds	[integer!]
+		return: 		[integer!]
+		/local
+			dev 		[hid_device]
+			bytes_read	[integer!]
+			ret 		[integer!]
+			fds 		[pollfd value]
+			errno 		[integer!]
+	][
+		dev: as hid_device device
+		if milliseconds >= 0 [
+probe dev/device_handle
+			fds/fd: dev/device_handle
+			fds/events: 1 << 16 
+probe fds/fd
+probe LOWORD(fds/events)
+probe HIWORD(fds/events)
+			ret: poll fds 1 milliseconds
+?? ret 
+			either any [ret = -1 ret = 0] [
+				return ret 
+			][
+				if (LOWORD(fds/events) and (8 or 16 or 32)) <> 0 [
+					return -1
+				]
+			]
+		]
+probe "before bytes_read"
+		bytes_read: linux-read dev/device_handle data length
+?? bytes_read
+		errno: as integer! get-errno-ptr
+		if all [
+			bytes_read < 0
+			any [errno = 11 errno = 115]
+		][	
+			bytes_read: 0
+			]
+		bytes_read
+	]
+
+	set_nonblocking: func [
+		device		[int-ptr!]
+		nonblock 	[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid_device]
+	][
+		dev: as hid_device device
+		dev/blocking: either nonblock = 0 [1][0]
+		0
+	]
+
+	close: func [
+		device 		[int-ptr!]
+		/local
+			dev 	[hid_device]
+	][
+		dev: as hid_device device
+		either dev = null [
+			probe "dev is null"
+		][
+			linux-close as int-ptr! dev/device_handle
+			free as byte-ptr! dev 
+		]
 	]
 
 ]
