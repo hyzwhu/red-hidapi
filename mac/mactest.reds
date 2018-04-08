@@ -24,31 +24,23 @@ while [as logic! cur-dev] [
     cur-dev: cur-dev/next
     probe " "
 ] 
-;  probe "begain to open func"
-; mac-handle: declare int-ptr!
-;  mac-handle: hid/open 0000534Ch 00000001h null
-;  probe ["mac-handle:" mac-handle]
-; ; handle: declare int-ptr!
-; ; test1: "IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/PE50@16/IOPP/S1F0@0/S1F0@00000000/AppleUSB20XHCIPort@00700000/VMware Virtual USB Hub@00700000/AppleUSB20Hub@00700000/AppleUSB20HubPort@00710000/TREZOR@00710000/U2F Interface@1/IOUSBHostHIDDevice@00710000,1"
-; ; handle: as int-ptr! hid/open_path test1 
-; ; probe handle
-
 ;-- Test ledger nano s --
 
-; dev: hid/open 00002C97h 00000001h null
-; ?? dev
+dev: hid/open 00002C97h 00000001h null
+?? dev
 
-; data: [
-; 	#"^(00)" #"^(01)" #"^(01)" #"^(05)" #"^(00)" #"^(00)" #"^(00)" #"^(16)"
-; 	#"^(E0)" #"^(02)" #"^(00)" #"^(00)" #"^(11)" #"^(04)" #"^(80)" #"^(00)"
-; 	#"^(00)" #"^(2C)" #"^(80)" #"^(00)" #"^(00)" #"^(3C)" #"^(80)" #"^(00)"
-; 	#"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)"
-; ]
+data: [
+	#"^(00)" #"^(01)" #"^(01)" #"^(05)" #"^(00)" #"^(00)" #"^(00)" #"^(16)"
+	#"^(E0)" #"^(02)" #"^(00)" #"^(00)" #"^(11)" #"^(04)" #"^(80)" #"^(00)"
+	#"^(00)" #"^(2C)" #"^(80)" #"^(00)" #"^(00)" #"^(3C)" #"^(80)" #"^(00)"
+	#"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)"
+]
 
-; probe ["size: " size? data]
-; hid/write dev data size? data
+probe ["size: " size? data]
+hid/write dev data size? data
 
-; dd: allocate 1024
-; set-memory dd null-byte 1024
-; probe "jdkfjaskldf"
-; probe hid/read_timeout dev dd 1024 3000
+dd: allocate 1024
+set-memory dd null-byte 1024
+probe "jdkfjaskldf"
+probe hid/read_timeout dev dd 1024 3000
+dump-hex dd 
