@@ -647,6 +647,7 @@ probe "in the select"
 				perror "HIDIOCGRDESCSIZE"
 			]
 			rpt_desc/1: desc_size
+?? desc_size
 			res: ioctl dev/device_handle -1878767614 rpt_desc
 ?? res 
 			either res < 0 [
