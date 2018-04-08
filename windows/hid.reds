@@ -356,6 +356,7 @@ hid: context [
 			dev 	[hid-device]
 	][
 		dev: as hid-device allocate size? hid-device
+		set-memory as byte-ptr! dev null-byte size? hid-device
 		dev/device-handle: as int-ptr! INVALID-HANDLE-VALUE
 		dev/blocking: true
 		dev/output-report-length: 0
@@ -416,22 +417,17 @@ hid: context [
 			desired-access 	[integer!]
 			share-mode		[integer!]
 	][
-		either enumerate? [
-			desired-access: 0
-			share-mode: FILE_SHARE_READ or FILE_SHARE_WRITE
-		][
-			desired-access: GENERIC_WRITE or GENERIC_READ
-			share-mode: FILE_SHARE_READ
-		]
+		desired-access:  either enumerate? [0][GENERIC_WRITE or GENERIC_READ]
+		share-mode: FILE_SHARE_READ or FILE_SHARE_WRITE
 		
-		as int-ptr! CreateFileA
-						path
-						desired-access
-						share-mode
-						null
-						3
-						FILE_FLAG_OVERLAPPED
-						0
+		handle: as int-ptr! CreateFileA	path
+										desired-access
+										share-mode
+										null
+										3
+										FILE_FLAG_OVERLAPPED
+										0
+		handle
 	]
 
 	;--hid_enumerate function
@@ -469,10 +465,6 @@ hid: context [
 			d 					[c-string!]
 			len1 				[integer!]
 	][	
-		
-		root: as hid-device-info allocate size? hid-device-info
-		cur-dev: as hid-device-info allocate size? hid-device-info
-
 		;-- allocate mem for devinfo
 		root: null
 		cur-dev: null
@@ -492,8 +484,10 @@ hid: context [
 		devinfo-data/cbSize: size? dev-info-data
 		devinterface-data/cbSize: size? dev-interface-data
 		;--information for all the devices belonging to the HID class.
-		device-info-set: as int-ptr! SetupDiGetClassDevs InterfaceClassGuid null null 
-		(DIGCF_PRESENT or DIGCF_DEVICEINTERFACE)
+		device-info-set: as int-ptr! 	SetupDiGetClassDevs InterfaceClassGuid 
+															null 
+															null 
+															(DIGCF_PRESENT or DIGCF_DEVICEINTERFACE)
 		;--Iterate over each device in the HID class, looking for the right one.
 		driver_name: as c-string! system/stack/allocate 64
 		wstr: as c-string! system/stack/allocate 256
@@ -501,14 +495,21 @@ hid: context [
 			write-handle: as int-ptr! INVALID-HANDLE-VALUE
 			required-size: 0
 			attrib: as HIDD-ATTRIBUTES allocate size? HIDD-ATTRIBUTES
-			res: SetupDiEnumDeviceInterfaces (as integer! device-info-set) 
-			null InterfaceClassGuid device-index devinterface-data 
+			res: SetupDiEnumDeviceInterfaces 	(as integer! device-info-set) 
+												null 
+												InterfaceClassGuid 
+												device-index 
+												devinterface-data 
 			if res = false [
 				;-- A return of FALSE from this function means that there are no more devices.
 				break
 			]
-			res: SetupDiGetDeviceInterfaceDetail  device-info-set 
-			devinterface-data null 0 :required-size null
+			res: SetupDiGetDeviceInterfaceDetail  	device-info-set 
+													devinterface-data 
+													null 
+													0 
+													:required-size 
+													null
 			devinterface-detail: as dev-interface-detail allocate required-size
 			devinterface-detail/cbSize: 5
 			;--Get the detailed data for this device.
@@ -522,22 +523,34 @@ hid: context [
 			;--Make sure this device is of Setup Class "HIDClass" and has a driver bound to it.
 			i: 0
 			forever [
-				res: SetupDiEnumDeviceInfo (as integer! device-info-set) i devinfo-data 
+				res: SetupDiEnumDeviceInfo 	(as integer! device-info-set) 
+											i 
+											devinfo-data 
 				if res = false [
 					free as byte-ptr! devinterface-detail
 					device-index: device-index + 1	
 				]
 
-				res: SetupDiGetDeviceRegistryPropertyA (as integer! device-info-set)
-				devinfo-data 7 null driver_name 256 null
+				res: SetupDiGetDeviceRegistryPropertyA 	(as integer! device-info-set)
+														devinfo-data 
+														7 
+														null 
+														driver_name 
+														256 
+														null
 				if res = false [
 					free as byte-ptr! devinterface-detail
 					device-index: device-index + 1	
 				]
 
 				if (strcmp driver_name "HIDClass") = 0 [
-					res: SetupDiGetDeviceRegistryPropertyA (as integer! device-info-set)
-					devinfo-data 9 null driver_name 256 null
+					res: SetupDiGetDeviceRegistryPropertyA 	(as integer! device-info-set)
+															devinfo-data 
+															9 
+															null 
+															driver_name 
+															256 
+															null
 					if res [
 						break
 					]
@@ -560,7 +573,7 @@ hid: context [
 			if any [id = 0 attrib/ID = id][
 				tmp: as hid-device-info allocate size? hid-device-info
 				;--vid/pid match . create the record
-				either as logic! cur-dev [
+				either cur-dev <> null [
 					cur-dev/next: tmp
 				][
 					root: tmp
@@ -780,6 +793,7 @@ hid: context [
 		]
 
 		res: WriteFile as integer! dev/device-handle buf  length null (as int-ptr! :ol)
+		
 		if res = false [
 			if GetLastError <> ERROR_IO_PENDING [
 				register-error dev "WriteFile"

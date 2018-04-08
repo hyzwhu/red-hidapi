@@ -20,8 +20,10 @@ hid/write dev data size? data
 dd: allocate 1024
 set-memory dd null-byte 1024
 probe "jdkfjaskldf"
-probe hid/read-timeout dev dd 1024 3000
+; probe hid/read-timeout dev dd 1024 3000
+probe hid/read dev dd 1024
 dump-hex dd 
 
-probe hid/read-timeout dev dd 1024 3000
+; probe hid/read-timeout dev dd 1024 3000
+probe hid/read dev dd 1024
 dump-hex dd 
