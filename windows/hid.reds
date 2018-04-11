@@ -468,6 +468,8 @@ hid: context [
 			buffer 				[c-string!]
 			d 					[c-string!]
 			len1 				[integer!]
+			skip1? 				[logic!]
+			skip2? 				[logic!]
 	][	
 		
 		root: as hid-device-info allocate size? hid-device-info
@@ -515,24 +517,25 @@ hid: context [
 			res: SetupDiGetDeviceInterfaceDetail device-info-set 
 			devinterface-data devinterface-detail required-size null null ;have some mistakes
 			buffer: as c-string! :devinterface-detail/DevicePath
-			if res = false [
-				free as byte-ptr! devinterface-detail
-				device-index: device-index + 1
+			skip1?: no
+			if res = false [ 
+				skip1?: yes 
 			]
 			;--Make sure this device is of Setup Class "HIDClass" and has a driver bound to it.
 			i: 0
+			unless skip1? [
 			forever [
 				res: SetupDiEnumDeviceInfo (as integer! device-info-set) i devinfo-data 
 				if res = false [
-					free as byte-ptr! devinterface-detail
-					device-index: device-index + 1	
+					skip1?: yes 
+					break
 				]
 
 				res: SetupDiGetDeviceRegistryPropertyA (as integer! device-info-set)
 				devinfo-data 7 null driver_name 256 null
 				if res = false [
-					free as byte-ptr! devinterface-detail
-					device-index: device-index + 1	
+					skip1?: yes 
+					break
 				]
 
 				if (strcmp driver_name "HIDClass") = 0 [
@@ -544,98 +547,103 @@ hid: context [
 				]
 				i: i + 1
 			]
-
-			;------------------------
-			;--open a handle to the device 
-			write-handle: open-device buffer true
-			;--check validity of write-handle
-			if write-handle = (as int-ptr! INVALID-HANDLE-VALUE) [
-				CloseHandle (as integer! write-handle)
-				return null
 			]
 
-			;--Get the Vendor ID and Product ID for this device.
-			attrib/Size: size? HIDD-ATTRIBUTES
-			HidD_GetAttributes write-handle attrib
-			if any [id = 0 attrib/ID = id][
-				tmp: as hid-device-info allocate size? hid-device-info
-				;--vid/pid match . create the record
-				either as logic! cur-dev [
-					cur-dev/next: tmp
-				][
-					root: tmp
+			unless skip1? [
+				skip2?: no
+				;------------------------
+				;--open a handle to the device 
+				write-handle: open-device buffer true
+				;--check validity of write-handle
+				if write-handle = (as int-ptr! INVALID-HANDLE-VALUE) [
+					skip2?: yes
 				]
-				cur-dev: tmp
-				;--Get the Usage Page and Usage for this device.
-				pp-data: 0
-				res1: HidD_GetPreparsedData write-handle :pp-data
-				if res1 [
-					nt-res: HidP_GetCaps as int-ptr! pp-data caps
-					if nt-res = 00110000h [
-						cur-dev/usage: caps/Usage
-					]
-					HidD_FreePreparsedData as int-ptr! pp-data
-				]
-				;--fill out the record
-				cur-dev/next: null
-				str: buffer
-				either as logic! (as integer! str) [
-					len: length? str
-					len1: len + 1
-					cur-dev/path: as c-string! allocate len1
-					strncpy cur-dev/path str len
-					cur-dev/path/len1: null-byte
-				][
-					cur-dev/path: null
-					
-				]
-				;--serial number
-				res1: HidD_GetSerialNumberString write-handle wstr 1024
-				;b/value: b/value and 0000FFFFh or (00000000h << 16)
-				wstr/1023: null-byte
-				wstr/1024: null-byte
-				either res1 [
-					cur-dev/serial-number: wcsdup wstr
-				][
-					cur-dev/serial-number: "null"
-				]
-				;--manufacturer string
-				res1: HidD_GetManufacturerString write-handle  wstr 1024
-				wstr/1023: null-byte
-				wstr/1024: null-byte
-				if res1 [
-					cur-dev/manufacturer-string: wcsdup wstr
-				]
-				;-------
-
-				;--product string
-				res1: HidD_GetProductString write-handle wstr 1024
-				wstr/1023: null-byte
-				wstr/1024: null-byte
-				if res1 [
-					cur-dev/product-string: wcsdup wstr
-				]
-				;--vid/pid
-				cur-dev/id: attrib/ID
-				;--release Number
-				cur-dev/release-number: attrib/VersionNumber			
-				;--Interface Number.
-				cur-dev/interface-number: -1
 				
-				if as logic! cur-dev/path [
-					interface-component: declare c-string!
-					interface-component: strstr cur-dev/path "&mi_"
-					if as logic! interface-component [
-					hex-str: interface-component + 4
-					endptr: 0
-					cur-dev/interface-number: strtol hex-str (as c-string! :endptr) 16
-					if (as c-string! endptr) = hex-str [
+				unless skip2? [
+					;--Get the Vendor ID and Product ID for this device.
+					attrib/Size: size? HIDD-ATTRIBUTES
+					HidD_GetAttributes write-handle attrib
+					if any [id = 0 attrib/ID = id][
+						tmp: as hid-device-info allocate size? hid-device-info
+						;--vid/pid match . create the record
+						either as logic! cur-dev [
+							cur-dev/next: tmp
+						][
+							root: tmp
+						]
+						cur-dev: tmp
+						;--Get the Usage Page and Usage for this device.
+						pp-data: 0
+						res1: HidD_GetPreparsedData write-handle :pp-data
+						if res1 [
+							nt-res: HidP_GetCaps as int-ptr! pp-data caps
+							if nt-res = 00110000h [
+								cur-dev/usage: caps/Usage
+							]
+							HidD_FreePreparsedData as int-ptr! pp-data
+						]
+						;--fill out the record
+						cur-dev/next: null
+						str: buffer
+						either as logic! (as integer! str) [
+							len: length? str
+							len1: len + 1
+							cur-dev/path: as c-string! allocate len1
+							strncpy cur-dev/path str len
+							cur-dev/path/len1: null-byte
+						][
+							cur-dev/path: null
+							
+						]
+						;--serial number
+						res1: HidD_GetSerialNumberString write-handle wstr 1024
+						;b/value: b/value and 0000FFFFh or (00000000h << 16)
+						wstr/1023: null-byte
+						wstr/1024: null-byte
+						either res1 [
+							cur-dev/serial-number: wcsdup wstr
+						][
+							cur-dev/serial-number: "null"
+						]
+						;--manufacturer string
+						res1: HidD_GetManufacturerString write-handle  wstr 1024
+						wstr/1023: null-byte
+						wstr/1024: null-byte
+						if res1 [
+							cur-dev/manufacturer-string: wcsdup wstr
+						]
+						;-------
+
+						;--product string
+						res1: HidD_GetProductString write-handle wstr 1024
+						wstr/1023: null-byte
+						wstr/1024: null-byte
+						if res1 [
+							cur-dev/product-string: wcsdup wstr
+						]
+						;--vid/pid
+						cur-dev/id: attrib/ID
+						;--release Number
+						cur-dev/release-number: attrib/VersionNumber			
+						;--Interface Number.
 						cur-dev/interface-number: -1
+						
+						if as logic! cur-dev/path [
+							interface-component: declare c-string!
+							interface-component: strstr cur-dev/path "&mi_"
+							if as logic! interface-component [
+							hex-str: interface-component + 4
+							endptr: 0
+							cur-dev/interface-number: strtol hex-str (as c-string! :endptr) 16
+							if (as c-string! endptr) = hex-str [
+								cur-dev/interface-number: -1
+							]
+							]
+						]
 					]
-					]
-				]
+				] 	
+				CloseHandle (as integer! write-handle)
 			]
-			CloseHandle (as integer! write-handle)
 			free as byte-ptr! devinterface-detail
 			device-index: device-index + 1	
 		]
