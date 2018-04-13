@@ -31,7 +31,7 @@ dev: hid/open 0000534Ch 00000001h null
 ?? dev 
 ;#if OS = 'Windows [#"^(00)"]
 data: [
-	#"^(00)" #"?" #"#" #"#" #"^(00)" #"^(00)"
+	#"?" #"#" #"#" #"^(00)" #"^(00)"
 	#"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)"#"^(00)"
 	#"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)"#"^(00)"
 	#"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)"#"^(00)"
@@ -43,12 +43,13 @@ data: [
 
 hid/set_nonblocking dev 1 
 probe ["size: " size? data]
+probe "hello123"
 b: declare integer!
 b: hid/write dev as c-string! data 64 ;size? data
 ?? b 
 dd: allocate 1024
 set-memory dd null-byte 1024
 probe "jdkfjaskldf"
-probe hid/read_timeout dev as c-string! dd 1024 -1
+probe hid/read_timeout dev as c-string! dd 1024 1000
 dump-hex dd
 

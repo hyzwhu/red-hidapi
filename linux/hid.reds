@@ -409,7 +409,6 @@ hid: context [
 		;--if so create a udev_device record for it
 		dev_list_entry: devices 
 		while [dev_list_entry <> null] [
-probe "in the loop"
 			;--get the filename of the /sys entry for the device 
 			;--and create a udev_device object(dev) representing it
 			serial_number_utf8: null
