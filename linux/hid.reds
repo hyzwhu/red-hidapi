@@ -260,16 +260,18 @@ hid: context [
 			key 			[integer!]
 			a 				[integer!]
 	][
-		i: 1
-		while [i < (size + 1)] [
-			key: as integer! report_descriptor/i
-
+		i: 0
+		while [i < size] [
+probe ["i:" i]
+			a: i + 1
+			key: as integer! report_descriptor/a
+?? key
 			;--check for the report id key
 			if key = 00000085h [return 1]
 			
 			either (key and 000000F0h) = 000000F0h [
-				either (i + 1) < (size + 2) [
-					a: i + 1
+				either (i + 1) < size [
+					a: i + 2
 					data_len: as integer! report_descriptor/a 
 				][
 					data_len: 0
@@ -277,6 +279,7 @@ hid: context [
 				key_size: 3
 			][
 				size_code: key and 00000003h
+?? size_code 
 				switch size_code [
 					0 		[data_len: size_code]
 					1 		[data_len: size_code]
@@ -284,7 +287,10 @@ hid: context [
 					3 		[data_len: 4]
 					default [data_len: 0]
 				]
+				key_size: 1
 			]
+?? data_len 
+?? key_size
 			i: i + data_len + key_size	
 		]
 		0	
@@ -319,6 +325,7 @@ hid: context [
 			found_serial	[integer!]
 			found_name 		[integer!]
 			ret 			[integer!]
+			skip? 			[logic!]
 	][
 		found_id: 0 
 		found_serial: 0
@@ -328,30 +335,33 @@ hid: context [
 		line: strtok_r tmp "^(0A)" :saveptr
 		while [line <> null] [
 			;--line: "key=value"
+			skip?: no 
 			key: line
 			value: strchr line as integer! #"=" 
 			if value = null [
 				;--goto next_line 
-				line: strtok_r null "^(0A)" :saveptr 
+				skip?: yes 
 			]
-			value/1: null-byte
-			value: value + 1
-			case [
-				(strcmp key "HID_ID") = 0 [
-					ret: sscanf [value "%x:%hx:%hx" bus_type vendor_id product_id]
-					if ret = 3 [
-						found_id: 1
-					]	
+			unless skip? [
+				value/1: null-byte
+				value: value + 1
+				case [
+					(strcmp key "HID_ID") = 0 [
+						ret: sscanf [value "%x:%hx:%hx" bus_type vendor_id product_id]
+						if ret = 3 [
+							found_id: 1
+						]	
+					]
+					(strcmp key "HID_NAME") = 0 [
+						product_name_utf8/value: as integer! strdup value
+						found_name: 1
+					]
+					(strcmp key "HID_UNIQ") = 0 [
+						serial_number_utf8/value: as integer! strdup value
+						found_serial: 1
+					]
+					true []
 				]
-				(strcmp key "HID_NAME") = 0 [
-					product_name_utf8/value: as integer! strdup value
-					found_name: 1
-				]
-				(strcmp key "HID_UNIQ") = 0 [
-					serial_number_utf8/value: as integer! strdup value
-					found_serial: 1
-				]
-				true []
 			]
 			line: strtok_r null "^(0A)" :saveptr
 		]
@@ -388,6 +398,8 @@ hid: context [
 			tmp 					[hid-device-info]
 			product_name_utf8_fake 	[integer!]
 			serial_number_utf8_fake	[integer!]
+			skip? 					[logic!]
+			skip1?					[logic!]
 	][
 		root: null
 		cur_dev: null
@@ -411,6 +423,7 @@ hid: context [
 		while [dev_list_entry <> null] [
 			;--get the filename of the /sys entry for the device 
 			;--and create a udev_device object(dev) representing it
+			skip?: no
 			serial_number_utf8: null
 			product_name_utf8: null
 			bus_type: 0
@@ -422,129 +435,128 @@ hid: context [
 			raw_dev: udev_device_new_from_syspath udev sysfs_path
 			dev_path: udev_device_get_devnode raw_dev
 
-			hid_dev: udev_device_get_parent_with_subsystem_devtype 	raw_dev
-																	"hid"
-																	null
+			hid_dev: 	udev_device_get_parent_with_subsystem_devtype 	
+						raw_dev
+						"hid"
+						null
 			if hid_dev = null [
 				;--unable to find parent hid device 
-				;--go to next 
-				free as byte-ptr! serial_number_utf8
-				free as byte-ptr! product_name_utf8
-				udev_device_unref raw_dev 
-				;--go to next
+				skip?: yes 
 			]
-
-			result: parse_uevent_info 	(udev_device_get_sysattr_value hid_dev "uevent")
-										:bus_type
-										:dev_vid
-										:dev_pid
-										:serial_number_utf8_fake
-										:product_name_utf8_fake 
-			serial_number_utf8: as c-string! serial_number_utf8_fake
-			product_name_utf8: as c-string! product_name_utf8_fake 
-?? serial_number_utf8
-?? product_name_utf8
-probe "finish parse uevent info"
-?? result
-			if result = 0 [
-				;--go to next 
-				free as byte-ptr! serial_number_utf8
-				free as byte-ptr! product_name_utf8
-				udev_device_unref raw_dev 
-				;--go to next
-			]
-?? bus_type
-			if all [bus_type <> 3 bus_type <> 5] [
-				;--go to next 
-				free as byte-ptr! serial_number_utf8
-				free as byte-ptr! product_name_utf8
-				udev_device_unref raw_dev 
-				;--go to next
-			]
-?? dev_pid
-?? dev_vid
-			if all [
-				any [vendor_id = 0  vendor_id = dev_vid]	
-				any [product_id = 0 product_id = dev_pid]
-				][
-probe "in the select"
-				tmp: as hid-device-info allocate size? hid-device-info
-				either cur_dev <> null [
-					cur_dev/next: tmp
-				][
-					root: tmp
+			unless skip? [
+				result: parse_uevent_info 	
+						(udev_device_get_sysattr_value hid_dev "uevent")
+						:bus_type
+						:dev_vid
+						:dev_pid
+						:serial_number_utf8_fake
+						:product_name_utf8_fake 
+				serial_number_utf8: as c-string! serial_number_utf8_fake
+				product_name_utf8: as c-string! product_name_utf8_fake 
+	?? serial_number_utf8
+	?? product_name_utf8
+	probe "finish parse uevent info"
+	?? result
+				if result = 0 [
+					;--go to next 
+					free as byte-ptr! serial_number_utf8
+					free as byte-ptr! product_name_utf8
+					udev_device_unref raw_dev 
+					;--go to next
 				]
-				prev_dev: cur_dev
-				cur_dev: tmp
+	?? bus_type
+				if all [bus_type <> 3 bus_type <> 5] [
+					;--go to next 
+					free as byte-ptr! serial_number_utf8
+					free as byte-ptr! product_name_utf8
+					udev_device_unref raw_dev 
+					;--go to next
+				]
+	?? dev_pid
+	?? dev_vid
+				if all [
+					any [vendor_id = 0  vendor_id = dev_vid]	
+					any [product_id = 0 product_id = dev_pid]
+					][
+	probe "in the select"
+					tmp: as hid-device-info allocate size? hid-device-info
+					either cur_dev <> null [
+						cur_dev/next: tmp
+					][
+						root: tmp
+					]
+					prev_dev: cur_dev
+					cur_dev: tmp
 
-				;--fill out the record 
-				cur_dev/next: null
-				cur_dev/path: either dev_path <> null [strdup dev_path][null]
+					;--fill out the record 
+					cur_dev/next: null
+					cur_dev/path: either dev_path <> null [strdup dev_path][null]
 
-				;--vid/pid
-				cur_dev/id: dev_vid << 16 or dev_pid
+					;--vid/pid
+					cur_dev/id: dev_vid << 16 or dev_pid
 
-				;--serial number
-				cur_dev/serial-number: utf8_to_wchar_t serial_number_utf8
+					;--serial number
+					cur_dev/serial-number: utf8_to_wchar_t serial_number_utf8
 
-				;--release number
-				cur_dev/release-number: 0
+					;--release number
+					cur_dev/release-number: 0
 
-				;--interface number
-				cur_dev/interface-number: -1
-?? bus_type
-				switch bus_type [
-					3 [
-						usb_dev: udev_device_get_parent_with_subsystem_devtype 	raw_dev
-																				"usb"
-																				"usb_device"
-						if usb_dev = null [
-							free as byte-ptr! cur_dev/serial-number
-							free as byte-ptr! cur_dev/path
-							free as byte-ptr! cur_dev
+					;--interface number
+					cur_dev/interface-number: -1
+	?? bus_type
+					skip1?: no 
+					switch bus_type [
+						3 [
+							usb_dev: 	udev_device_get_parent_with_subsystem_devtype 	
+										raw_dev
+										"usb"
+										"usb_device"
+							if usb_dev = null [
+								free as byte-ptr! cur_dev/serial-number
+								free as byte-ptr! cur_dev/path
+								free as byte-ptr! cur_dev
 
-							either prev_dev <> null [
-								prev_dev/next: null
-								cur_dev: prev_dev
-							][
-								root: null
-								cur_dev: root
+								either prev_dev <> null [
+									prev_dev/next: null
+									cur_dev: prev_dev
+								][
+									root: null
+									cur_dev: root
+								]
+									skip1?: yes 
 							]
+							unless skip1?[
+								;--manufacturer and product strings 
+								cur_dev/manufacturer-string: 	copy_udev_string 	
+																usb_dev
+																as c-string! device_string_names/1
 
-							;--go to next 
-							free as byte-ptr! serial_number_utf8
-							free as byte-ptr! product_name_utf8
-							udev_device_unref raw_dev 
-							;--go to next
+								cur_dev/product-string: copy_udev_string 	
+														usb_dev 
+														as c-string! device_string_names/2				 
+								;--release number
+								str: udev_device_get_sysattr_value usb_dev "bcdDevice"
+		?? str
+								cur_dev/release-number: either str <> null [strtol str null 16][0]
+
+								;--get a handle to the interface's udev node
+								intf_dev: 	udev_device_get_parent_with_subsystem_devtype	
+											raw_dev
+											"usb"
+											"usb_interface"
+								if intf_dev <> null [
+									str: udev_device_get_sysattr_value intf_dev "bInterfaceNumber"
+									cur_dev/interface-number: either str <> null [strtol str null 16][-1]
+								]
+							]							
 						]
-
-						;--manufacturer and product strings 
-						cur_dev/manufacturer-string: copy_udev_string 	usb_dev
-																		as c-string! device_string_names/1
-
-						cur_dev/product-string: copy_udev_string 	usb_dev 
-																	as c-string! device_string_names/2				 
-						;--release number
-						str: udev_device_get_sysattr_value usb_dev "bcdDevice"
-?? str
-						cur_dev/release-number: either str <> null [strtol str null 16][0]
-
-						;--get a handle to the interface's udev node
-						intf_dev: udev_device_get_parent_with_subsystem_devtype	raw_dev
-																				"usb"
-																				"usb_interface"
-						if intf_dev <> null [
-							str: udev_device_get_sysattr_value intf_dev "bInterfaceNumber"
-							cur_dev/interface-number: either str <> null [strtol str null 16][-1]
+						5 [
+							cur_dev/manufacturer-string: wcsdup ""
+							cur_dev/product-string: utf8_to_wchar_t product_name_utf8
+					
 						]
-						
+						default []
 					]
-					5 [
-						cur_dev/manufacturer-string: wcsdup ""
-						cur_dev/product-string: utf8_to_wchar_t product_name_utf8
-				
-					]
-					default []
 				]
 			]
 			;--go to next 
@@ -634,13 +646,14 @@ probe "in the select"
 		;--open here
 		dev/device_handle: linux-open path 2
 		rpt_desc: system/stack/allocate 1025
+		set-memory as byte-ptr! rpt_desc null-byte 4100
 		;--if we have a good handle ,return it 
 		either dev/device_handle > 0 [
 			;--get the report descriptor
 			set-memory as byte-ptr! rpt_desc null-byte 4100
 
 			;--get report descriptor size 
-			res: ioctl dev/device_handle -2147203071 :desc_size
+			res: ioctl dev/device_handle -2147203071 :desc_size  
 ?? res 
 			if res < 0 [
 				perror "HIDIOCGRDESCSIZE"
@@ -652,9 +665,12 @@ probe "in the select"
 			either res < 0 [
 				perror "HIDIOCGRDESC"
 			][
-				dev/uses_numbered_reports: uses_numbered_reports 	as byte-ptr! (rpt_desc + 1)
-																	rpt_desc/1
-probe  	dev/uses_numbered_reports
+				dev/uses_numbered_reports: 	uses_numbered_reports 	
+											as byte-ptr! (rpt_desc + 1)
+											rpt_desc/1
+dump-hex as byte-ptr! rpt_desc
+dump-hex as byte-ptr! (rpt_desc + 1)
+probe  	["dev/uses_numbered_reports: "dev/uses_numbered_reports]
 			]
 			return dev 
 		][
@@ -694,10 +710,11 @@ probe  	dev/uses_numbered_reports
 		if milliseconds >= 0 [
 probe dev/device_handle
 			fds/fd: dev/device_handle
-			fds/events: 1 << 16 
+			fds/events: 1 
+dump-hex as byte-ptr! fds 
 probe fds/fd
-probe LOWORD(fds/events)
 probe HIWORD(fds/events)
+probe LOWORD(fds/events)
 			ret: poll fds 1 milliseconds
 ?? ret 
 			either any [ret = -1 ret = 0] [
@@ -708,7 +725,7 @@ probe HIWORD(fds/events)
 				]
 			]
 		]
-probe "before bytes_read"
+probe "before bytes_read~~~~~~~~~~"
 		bytes_read: linux-read dev/device_handle data length
 ?? bytes_read
 		errno: as integer! get-errno-ptr
