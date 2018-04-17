@@ -1,11 +1,22 @@
-Red/System []
+Red/System [
+	Title:	"Hidapi"
+	Author: "Huang Yongzhao"
+	File: 	%windows.reds
+	Needs:	View
+	Tabs: 	4
+	Rights:  "Copyright (C) 2018 Red Foundation. All rights reserved."
+	License: {
+		Distributed under the Boost Software License, Version 1.0.
+		See https://github.com/red/red/blob/master/BSL-License.txt
+	}
+]
 
 hid: context [
 	#define MAX_STRING_WCHARS				00000FFFh
-	#define FILE_SHARE_READ                 00000001h  
-	#define FILE_SHARE_WRITE                00000002h 
-	#define GENERIC_READ                    80000000h
-	#define GENERIC_WRITE                   40000000h
+	;#define FILE_SHARE_READ                 00000001h
+	;#define FILE_SHARE_WRITE                00000002h
+	;#define GENERIC_READ                    80000000h
+	;#define GENERIC_WRITE                   40000000h
 	#define FILE_FLAG_OVERLAPPED            40000000h
 	#define DIGCF_PRESENT          			00000002h
 	#define DIGCF_DEVICEINTERFACE   		00000010h
@@ -19,7 +30,7 @@ hid: context [
 	;#define MIN(x y) (either x > y [y] [x])
 
 	;--extract the short type data from integer!
-	#define LOWORD(param) (param and FFFFh << 16 >> 16)   
+	#define LOWORD(param) (param and FFFFh << 16 >> 16)
 	#define HIWORD(param) (param >> 16)
 
 
@@ -67,7 +78,7 @@ hid: context [
 		last-error-num 			[integer!]
 		read-pending 			[logic!]
 		read-buf 				[c-string!]
-		ol        				[overlapped-struct value] 
+		ol        				[overlapped-struct value]
 	]
 	hid-device-info: alias struct! [
 		path 				[c-string!]
