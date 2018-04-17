@@ -9,6 +9,10 @@ hid: context [
 	#define DEVICE_STRING_COUNT			3
 	#define LOWORD(param) (param and FFFFh << 16 >> 16)   
 	#define HIWORD(param) (param >> 16)
+	#define _IOC(dir type nr size) ((dir << 30) or (type << 8) or (nr << 0) or (size << 16))
+	#define HIDIOCSFEATURE(len)   (_IOC(3 (as integer! #"H")  06h  len))
+	#define _IOC(dir type nr size) ((dir << 30) or (type << 8) or (nr << 0) or (size << 16))
+	#define HIDIOCGFEATURE(len)    (_IOC(3 (as integer! #"H")  07h len))
 
 	;--usb hid device property names
 	device_string_names: ["manufacturer" "product"	"serial"]
@@ -27,6 +31,29 @@ hid: context [
 		fd 			[integer!]
 		events 		[integer!]  ;--events and revents
 	]
+	stat!: alias struct! [					;-- stat64 struct
+					st_dev_l	  [integer!]
+					st_dev_h	  [integer!]
+					pad0		  [integer!]
+					__st_ino	  [integer!]
+					st_mode		  [integer!]
+					st_nlink	  [integer!]
+					st_uid		  [integer!]
+					st_gid		  [integer!]
+					st_rdev_l	  [integer!]
+					st_rdev_h	  [integer!]
+					pad1		  [integer!]
+					st_size		  [integer!]
+					st_blksize	  [integer!]
+					st_blocks	  [integer!]
+					st_atime	  [timespec! value]
+					st_mtime	  [timespec! value]
+					st_ctime	  [timespec! value]
+					st_ino_h	  [integer!]
+					st_ino_l	  [integer!]
+					;...optional padding skipped
+	]
+	
 
 	#import [
 		LIBC-file cdecl [
@@ -176,6 +203,22 @@ hid: context [
 				]
 			linux-close: "close" [
 				handle 		[int-ptr!]
+			]
+			_stat:	"fstat" [
+				file		[integer!]
+				restrict	[stat!]
+				return:		[integer!]
+			]
+			udev_device_new_from_devnum: "udev_device_new_from_devnum" [
+				udev 		[int-ptr!]
+				type 		[byte!]
+				devnum1 	[integer!]
+				devnum2 	[integer!]
+				return: 	[int-ptr!]
+			]
+			udev_device_get_parent_with_subsystem_devtype: "udev_device_get_parent_with_subsystem_devtype"[
+				udev_device 	[int-ptr!]
+				subsystem		[byte-ptr!]
 			]
 		]
 		"libudev.so.1" cdecl[
@@ -724,17 +767,50 @@ hid: context [
 		 return read_timeout device data length block?
 	]
 
-	; set_nonblocking: func [
-	; 	device		[int-ptr!]
-	; 	nonblock 	[integer!]
-	; 	return: 	[integer!]
-	; 	/local
-	; 		dev 	[hid_device]
-	; ][
-	; 	dev: as hid_device device
-	; 	dev/blocking: either nonblock = 0 [1][0]
-	; 	0
-	; ]
+	set_nonblocking: func [
+		device		[int-ptr!]
+		nonblock 	[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid_device]
+	][
+		dev: as hid_device device
+		dev/blocking: either nonblock = 0 [1][0]
+		0
+	]
+
+	send_feature_report: func [
+		device 		[int-ptr!]
+		data 		[byte-ptr!]
+		length		[integer!]
+		return: 	[integer!]
+		/local
+			res    	[integer!]
+			dev  	[hid_device]
+	][
+		dev: as hid_device device
+		res: ioctl dev/device_handle HIDIOCSFEATURE(length) as int-ptr! data 
+		if res < 0 [
+			perror "ioctl (SFEATURE)"
+		]
+		res 
+	]
+
+	get_feature_report: func [
+		device 		[int-ptr!]
+		data 		[byte-ptr!]
+		length		[integer!]
+		return: 	[integer!]
+		/local
+			res 	[integer!]
+			dev 	[hid_device]
+	][
+		res: ioctl dev/device_handle HIDIOCGFEATURE(length) data 
+		if res < 0 [
+			perror "ioctl (GFEATURE)"
+		]
+		res  
+	]
 
 	close: func [
 		device 		[int-ptr!]
@@ -748,6 +824,55 @@ hid: context [
 			linux-close as int-ptr! dev/device_handle
 			free as byte-ptr! dev 
 		]
+	]
+	get_device_string: func [
+		device 		[int-ptr!]
+		key 		[integer!]
+		string		[c-string!]
+		maxlen		[integer!]
+		return: 	[integer!]
+		/local
+			udev				[int-ptr!]
+			udev_dev			[int-ptr!]
+			parent				[int-ptr!]
+			hid_dev 			[int-ptr!]
+			s 					[stat! value]
+			ret 				[integer!]
+			serial_number_utf8	[c-string!]
+			product_name_utf8	[c-string!]
+			dev 				[hid_device]
+	][
+		dev: as hid_device device
+		serial_number_utf8: null
+		product_name_utf8: null
+		ret: -1 
+
+		;--create the udev object
+		udev: udev_new
+		if udev = null [
+			probe "can not create udev"
+			return -1
+		]
+
+		;--get the dev_t(major/minor numbers) from the file handle
+		ret: _stat dev/device_handle s 
+		if -1 = ret [return ret ]
+
+		;--open a udev device from the dev_t,'c' means character device
+		udev_dev: udev_device_new_from_devnum udev #"c" s/st_rdev_l s/st_rdev_h
+		if udev_dev [
+			hid_dev: 
+		]
+		
+	]
+
+	get_manufacturer_string: func [
+		device 		[int-ptr!]
+		string 		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+	][
+		
 	]
 
 ]
