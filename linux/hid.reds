@@ -660,7 +660,7 @@ hid: context [
 
 	write: func [
 		device 		[int-ptr!]
-		data 		[c-string!]
+		data 		[byte-ptr!]
 		length 		[integer!]
 		return: 	[integer!]
 		/local
@@ -668,13 +668,13 @@ hid: context [
 			bytes_written	[integer!]
 	][
 		dev: as hid_device device
-		bytes_written: linux-write dev/device_handle data length
+		bytes_written: linux-write dev/device_handle as c-string! data length
 		bytes_written
 	]
 
 	read_timeout: func [
 		device 			[int-ptr!]
-		data 			[c-string!]
+		data 			[byte-ptr!]
 		length 			[integer!]
 		milliseconds	[integer!]
 		return: 		[integer!]
@@ -698,7 +698,7 @@ hid: context [
 				]
 			]
 		]
-		bytes_read: linux-read dev/device_handle data length
+		bytes_read: linux-read dev/device_handle as c-string! data length
 		errno: as integer! get-errno-ptr
 		if all [
 			bytes_read < 0
@@ -709,17 +709,32 @@ hid: context [
 		bytes_read
 	]
 
-	set_nonblocking: func [
-		device		[int-ptr!]
-		nonblock 	[integer!]
-		return: 	[integer!]
+	read: func [
+		device 			[int-ptr!]
+		data 			[byte-ptr!]
+		length 			[integer!]	
+		return: 		[integer!]
 		/local
-			dev 	[hid_device]
-	][
-		dev: as hid_device device
-		dev/blocking: either nonblock = 0 [1][0]
-		0
+			dev 		[hid_device]
+			block? 		[integer!]
+	][	
+		 dev: as hid_device device
+		 block?: either dev/blocking <> 0 [-1][0]
+?? block?
+		 return read_timeout device data length block?
 	]
+
+	; set_nonblocking: func [
+	; 	device		[int-ptr!]
+	; 	nonblock 	[integer!]
+	; 	return: 	[integer!]
+	; 	/local
+	; 		dev 	[hid_device]
+	; ][
+	; 	dev: as hid_device device
+	; 	dev/blocking: either nonblock = 0 [1][0]
+	; 	0
+	; ]
 
 	close: func [
 		device 		[int-ptr!]
