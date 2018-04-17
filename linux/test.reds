@@ -41,15 +41,18 @@ data: [
 	#"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)"
 ]
 
-hid/set_nonblocking dev 1 
+;hid/set_nonblocking dev 1 
 probe ["size: " size? data]
 probe "hello123"
 b: declare integer!
-b: hid/write dev as c-string! data 64 ;size? data
+b: hid/write dev data 64 ;size? data
 ?? b 
 dd: allocate 1024
 set-memory dd null-byte 1024
 probe "jdkfjaskldf"
-probe hid/read_timeout dev as c-string! dd 1024 1000
+h: declare integer!
+; h: hid/read_timeout dev as c-string! dd 1024 10000
+h: hid/read dev dd 1024
+?? h
 dump-hex dd
 
