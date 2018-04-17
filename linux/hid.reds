@@ -11,8 +11,8 @@ hid: context [
 	#define HIWORD(param) (param >> 16)
 	#define _IOC(dir type nr size) ((dir << 30) or (type << 8) or (nr << 0) or (size << 16))
 	#define HIDIOCSFEATURE(len)   (_IOC(3 (as integer! #"H")  06h  len))
-	#define _IOC(dir type nr size) ((dir << 30) or (type << 8) or (nr << 0) or (size << 16))
-	#define HIDIOCGFEATURE(len)    (_IOC(3 (as integer! #"H")  07h len))
+	#define _IOC1(dir type nr size) ((dir << 30) or (type << 8) or (nr << 0) or (size << 16))
+	#define HIDIOCGFEATURE(len)    (_IOC1(3 (as integer! #"H")  07h len))
 
 	;--usb hid device property names
 	device_string_names: ["manufacturer" "product"	"serial"]
@@ -31,6 +31,12 @@ hid: context [
 		fd 			[integer!]
 		events 		[integer!]  ;--events and revents
 	]
+
+	timespec!: alias struct! [
+			sec    [integer!] ;Seconds
+			nsec   [integer!] ;Nanoseconds
+	]
+
 	stat!: alias struct! [					;-- stat64 struct
 					st_dev_l	  [integer!]
 					st_dev_h	  [integer!]
@@ -54,7 +60,6 @@ hid: context [
 					;...optional padding skipped
 	]
 	
-
 	#import [
 		LIBC-file cdecl [
 			mbstowcs: "mbstowcs" [
@@ -204,7 +209,7 @@ hid: context [
 			linux-close: "close" [
 				handle 		[int-ptr!]
 			]
-			_stat:	"fstat" [
+			_fstat32: "_fstat32" [
 				file		[integer!]
 				restrict	[stat!]
 				return:		[integer!]
@@ -216,9 +221,11 @@ hid: context [
 				devnum2 	[integer!]
 				return: 	[int-ptr!]
 			]
-			udev_device_get_parent_with_subsystem_devtype: "udev_device_get_parent_with_subsystem_devtype"[
-				udev_device 	[int-ptr!]
-				subsystem		[byte-ptr!]
+			wcsncpy: "wcsncpy" [
+				dest 		[c-string!]
+				src 		[c-string!]
+				num 		[integer!]
+				return: 	[c-string!]
 			]
 		]
 		"libudev.so.1" cdecl[
@@ -805,7 +812,8 @@ hid: context [
 			res 	[integer!]
 			dev 	[hid_device]
 	][
-		res: ioctl dev/device_handle HIDIOCGFEATURE(length) data 
+		dev: as hid_device device
+		res: ioctl dev/device_handle HIDIOCGFEATURE(length) as int-ptr! data 
 		if res < 0 [
 			perror "ioctl (GFEATURE)"
 		]
@@ -832,21 +840,34 @@ hid: context [
 		maxlen		[integer!]
 		return: 	[integer!]
 		/local
-			udev				[int-ptr!]
-			udev_dev			[int-ptr!]
-			parent				[int-ptr!]
-			hid_dev 			[int-ptr!]
-			s 					[stat! value]
-			ret 				[integer!]
-			serial_number_utf8	[c-string!]
-			product_name_utf8	[c-string!]
-			dev 				[hid_device]
+			udev						[int-ptr!]
+			udev_dev					[int-ptr!]
+			parent						[int-ptr!]
+			hid_dev 					[int-ptr!]
+			s 							[stat! value]
+			ret 						[integer!]
+			serial_number_utf8			[c-string!]
+			product_name_utf8			[c-string!]
+			dev 						[hid_device]
+			dev_vid 					[integer!]
+			dev_pid 					[integer!]
+			bus_type					[integer!]
+			retm 						[integer!]
+			str 						[c-string!]
+			key_str						[c-string!]
+			a 							[integer!]
+			serial_number_utf8_fake		[integer!]
+			product_name_utf8_fake		[integer!]
 	][
 		dev: as hid_device device
 		serial_number_utf8: null
 		product_name_utf8: null
+		serial_number_utf8_fake: 0
+		product_name_utf8_fake: 0
 		ret: -1 
-
+		bus_type: 0
+		dev_vid: 0
+		dev_pid: 0
 		;--create the udev object
 		udev: udev_new
 		if udev = null [
@@ -855,15 +876,76 @@ hid: context [
 		]
 
 		;--get the dev_t(major/minor numbers) from the file handle
-		ret: _stat dev/device_handle s 
+		ret: _fstat32 dev/device_handle s 
 		if -1 = ret [return ret ]
 
 		;--open a udev device from the dev_t,'c' means character device
 		udev_dev: udev_device_new_from_devnum udev #"c" s/st_rdev_l s/st_rdev_h
-		if udev_dev [
-			hid_dev: 
+		if udev_dev <> null [
+			hid_dev:	udev_device_get_parent_with_subsystem_devtype 
+						udev_dev
+						"hid"
+						null
+			if hid_dev <> null [
+				ret: 	parse_uevent_info
+						(udev_device_get_sysattr_value hid_dev "uevent")
+						:bus_type
+						:dev_vid
+						:dev_pid
+						:serial_number_utf8_fake
+						:product_name_utf8_fake 
+				serial_number_utf8: as c-string! serial_number_utf8_fake
+				product_name_utf8: as c-string! product_name_utf8_fake
+				either bus_type = 5 [ ;--bluetooth is 05h
+					switch key [
+						0 [
+							wcsncpy string "" maxlen
+							ret: 0
+						]
+						1 [
+							retm: mbstowcs string product_name_utf8 maxlen
+							ret: either retm = -1 [-1][0]
+						]
+						2 [
+							retm: mbstowcs string serial_number_utf8 maxlen
+							ret: either retm = -1 [-1][0]
+						]
+						3 [
+							ret: -1
+						]
+						default [
+							ret: -1
+						]
+					]	
+				][
+					parent: udev_device_get_parent_with_subsystem_devtype
+							udev_dev
+							"usb"
+							"usb_device"
+					if parent <> null [
+						key_str: null
+						either all [key >= 0 key < 3] [
+							a: key + 1
+							key_str: as c-string! device_string_names/a 
+						][
+							ret: -1
+							;--go to end
+						]
+						str: udev_device_get_sysattr_value parent key_str
+						if str <> null [
+							retm: mbstowcs string str maxlen
+							ret: either -1 = retm [-1][0]
+							;--go to end
+						]
+					]
+				]
+			]
 		]
-		
+		free as byte-ptr! serial_number_utf8
+		free as byte-ptr! product_name_utf8
+		udev_device_unref udev_dev
+		udev_unref udev
+		ret 
 	]
 
 	get_manufacturer_string: func [
@@ -872,8 +954,49 @@ hid: context [
 		maxlen 		[integer!]
 		return: 	[integer!]
 	][
-		
+		return 	get_device_string 
+				device
+				0
+				string
+				maxlen
 	]
+
+	get_product_string: func [
+		device 		[int-ptr!]
+		string 		[c-string!]
+		maxlen		[integer!]
+		return: 	[integer!]
+	][
+		return 	get_device_string 
+				device
+				1
+				string
+				maxlen
+	]
+
+	get_serial_number_String: func [
+		device 		[int-ptr!]
+		string 		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+	][
+		return 	get_device_string
+				device
+				2
+				string
+				maxlen
+	]
+
+	get_indexed_string: func [
+		device 		[int-ptr!]
+		str_index	[integer!]
+		string 		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+	][
+		-1 
+	]
+
 
 ]
 
