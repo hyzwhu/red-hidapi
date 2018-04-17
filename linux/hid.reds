@@ -262,10 +262,8 @@ hid: context [
 	][
 		i: 0
 		while [i < size] [
-probe ["i:" i]
 			a: i + 1
 			key: as integer! report_descriptor/a
-?? key
 			;--check for the report id key
 			if key = 00000085h [return 1]
 			
@@ -279,7 +277,6 @@ probe ["i:" i]
 				key_size: 3
 			][
 				size_code: key and 00000003h
-?? size_code 
 				switch size_code [
 					0 		[data_len: size_code]
 					1 		[data_len: size_code]
@@ -289,8 +286,6 @@ probe ["i:" i]
 				]
 				key_size: 1
 			]
-?? data_len 
-?? key_size
 			i: i + data_len + key_size	
 		]
 		0	
@@ -453,10 +448,6 @@ probe ["i:" i]
 						:product_name_utf8_fake 
 				serial_number_utf8: as c-string! serial_number_utf8_fake
 				product_name_utf8: as c-string! product_name_utf8_fake 
-	?? serial_number_utf8
-	?? product_name_utf8
-	probe "finish parse uevent info"
-	?? result
 				if result = 0 [
 					;--go to next 
 					free as byte-ptr! serial_number_utf8
@@ -464,7 +455,6 @@ probe ["i:" i]
 					udev_device_unref raw_dev 
 					;--go to next
 				]
-	?? bus_type
 				if all [bus_type <> 3 bus_type <> 5] [
 					;--go to next 
 					free as byte-ptr! serial_number_utf8
@@ -472,13 +462,10 @@ probe ["i:" i]
 					udev_device_unref raw_dev 
 					;--go to next
 				]
-	?? dev_pid
-	?? dev_vid
 				if all [
 					any [vendor_id = 0  vendor_id = dev_vid]	
 					any [product_id = 0 product_id = dev_pid]
 					][
-	probe "in the select"
 					tmp: as hid-device-info allocate size? hid-device-info
 					either cur_dev <> null [
 						cur_dev/next: tmp
@@ -503,7 +490,6 @@ probe ["i:" i]
 
 					;--interface number
 					cur_dev/interface-number: -1
-	?? bus_type
 					skip1?: no 
 					switch bus_type [
 						3 [
@@ -536,7 +522,6 @@ probe ["i:" i]
 														as c-string! device_string_names/2				 
 								;--release number
 								str: udev_device_get_sysattr_value usb_dev "bcdDevice"
-		?? str
 								cur_dev/release-number: either str <> null [strtol str null 16][0]
 
 								;--get a handle to the interface's udev node
@@ -654,23 +639,17 @@ probe ["i:" i]
 
 			;--get report descriptor size 
 			res: ioctl dev/device_handle -2147203071 :desc_size  
-?? res 
 			if res < 0 [
 				perror "HIDIOCGRDESCSIZE"
 			]
 			rpt_desc/1: desc_size
-?? desc_size
 			res: ioctl dev/device_handle -1878767614 rpt_desc
-?? res 
 			either res < 0 [
 				perror "HIDIOCGRDESC"
 			][
 				dev/uses_numbered_reports: 	uses_numbered_reports 	
 											as byte-ptr! (rpt_desc + 1)
 											rpt_desc/1
-dump-hex as byte-ptr! rpt_desc
-dump-hex as byte-ptr! (rpt_desc + 1)
-probe  	["dev/uses_numbered_reports: "dev/uses_numbered_reports]
 			]
 			return dev 
 		][
@@ -708,15 +687,9 @@ probe  	["dev/uses_numbered_reports: "dev/uses_numbered_reports]
 	][
 		dev: as hid_device device
 		if milliseconds >= 0 [
-probe dev/device_handle
 			fds/fd: dev/device_handle
 			fds/events: 1 
-dump-hex as byte-ptr! fds 
-probe fds/fd
-probe HIWORD(fds/events)
-probe LOWORD(fds/events)
 			ret: poll fds 1 milliseconds
-?? ret 
 			either any [ret = -1 ret = 0] [
 				return ret 
 			][
@@ -725,9 +698,7 @@ probe LOWORD(fds/events)
 				]
 			]
 		]
-probe "before bytes_read~~~~~~~~~~"
 		bytes_read: linux-read dev/device_handle data length
-?? bytes_read
 		errno: as integer! get-errno-ptr
 		if all [
 			bytes_read < 0
