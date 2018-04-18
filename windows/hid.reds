@@ -13,10 +13,10 @@ Red/System [
 
 hid: context [
 	#define MAX_STRING_WCHARS				00000FFFh
-	;#define FILE_SHARE_READ                 00000001h
-	;#define FILE_SHARE_WRITE                00000002h
-	;#define GENERIC_READ                    80000000h
-	;#define GENERIC_WRITE                   40000000h
+	#define FILE_SHARE_READ                 00000001h
+	#define FILE_SHARE_WRITE                00000002h
+	#define GENERIC_READ                    80000000h
+	#define GENERIC_WRITE                   40000000h
 	#define FILE_FLAG_OVERLAPPED            40000000h
 	#define DIGCF_PRESENT          			00000002h
 	#define DIGCF_DEVICEINTERFACE   		00000010h
@@ -27,7 +27,7 @@ hid: context [
 
 
 	;remian a block for hidapi.h
-	;#define MIN(x y) (either x > y [y] [x])
+	#define MIN(x y) (either x > y [y] [x])
 
 	;--extract the short type data from integer!
 	#define LOWORD(param) (param and FFFFh << 16 >> 16)
@@ -160,7 +160,7 @@ hid: context [
 			HidD_GetIndexedString: "HidD_GetIndexedString" [
 				handle			[int-ptr!]
 				string-index	[integer!] ;ulong
-				buffer 			[int-ptr!]
+				buffer 			[c-string!]
 				bufferlen 		[integer!] ;ulong
 				return: 		[logic!]
 			]
@@ -845,14 +845,18 @@ hid: context [
 		
 		;--copy the handle for convenience
 		ev: dev/ol/hEvent
-		if dev/read-pending = false [
+		unless dev/read-pending [
 			;--start an overlapped i/o read
 			dev/read-pending: true
 			set-memory as byte-ptr! dev/read-buf null-byte dev/input-report-length
 			ResetEvent ev 
-			res: ReadFile (as integer! dev/device-handle) 
-			as byte-ptr! dev/read-buf dev/input-report-length :bytes-read :dev/ol
-			if res = false [
+			res: 	ReadFile 
+					(as integer! dev/device-handle) 
+					as byte-ptr! dev/read-buf 
+					dev/input-report-length 
+					:bytes-read 
+					:dev/ol
+			unless res [
 				if GetLastError <> ERROR_IO_PENDING [
 					;--ReadFile() has failed. Clean up and return error.
 					CancelIo dev/device-handle
@@ -871,7 +875,11 @@ hid: context [
 			]
 		]
 
-		res: GetOverlappedResult dev/device-handle as overlapped-struct :dev/ol :bytes-read true
+		res: 	GetOverlappedResult 
+				dev/device-handle 
+				as overlapped-struct :dev/ol 
+				:bytes-read 
+				true
 
 		;--set pending back to false
 		dev/read-pending: false
@@ -940,4 +948,99 @@ hid: context [
 		]
 	]
 
+	get_manufacturer_string: func [
+		device 		[int-ptr!]
+		string 		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+		/local
+			res 	[logic!]
+			dev 	[hid-device]
+	][
+		dev: as hid-device device
+		res: 	HidD_GetManufacturerString	
+				dev/device-handle
+				string
+				2 *  MIN(maxlen MAX_STRING_WCHARS)
+		unless res [
+			register-error dev "HidD_GetManufacturerString"
+			return -1
+		]
+		0
+	]
+
+	get_product_string: func [
+		device 		[int-ptr!]
+		string 		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+		/local
+			res 	[logic!]
+			dev 	[hid-device]
+	][
+		dev: as hid-device device 
+		res: 	HidD_GetProductString 	
+				dev/device-handle
+				string
+				2 * MIN(maxlen MAX_STRING_WCHARS)
+		unless res [
+			register-error dev "HidD_GetProductString"
+			return -1
+		]
+		0
+	]
+
+	get_serial_number_string: func [
+		device 		[int-ptr!]
+		string 		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+		/local
+			res 	[logic!]
+			dev 	[hid-device]
+	][
+		dev: as hid-device device
+		res: 	HidD_GetSerialNumberString
+				dev/device-handle
+				string
+				2 * MIN(maxlen MAX_STRING_WCHARS)
+		unless res [
+			register-error dev "HidD_GetSerialNumberString"
+			return -1
+		]
+		0
+	]
+
+	get_indexed_string: func [
+		device 			[int-ptr!]
+		string-index	[integer!]
+		string 			[c-string!]
+		maxlen 			[integer!]
+		return: 		[integer!]
+		/local
+			res 	[logic!]
+			dev 	[hid-device]
+	][
+		dev: as hid-device device
+		res: 	HidD_GetIndexedString
+				dev/device-handle
+				string-index
+				string
+				2 * MIN(maxlen MAX_STRING_WCHARS)
+		unless res [
+			register-error dev "HidD_GetIndexedString"
+			return -1
+		]
+		0
+	]
+
+	error: func [
+		device 		[int-ptr!]
+		return: 	[c-string!]
+		/local
+			dev 	[hid-device]
+	][
+		dev: as hid-device device
+		as c-string! dev/last-error-str
+	]
 ]
