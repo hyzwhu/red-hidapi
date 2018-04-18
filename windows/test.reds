@@ -81,4 +81,10 @@ dump-hex as byte-ptr! dd
 ;--get_indexed_string
 probe hid/get_indexed_string dev 2 dd 255
 dump-hex as byte-ptr! dd 
- 
+
+;--close the dev 
+hid/close dev   
+;--if not sure the dev had been closed, try the func below
+set-memory as byte-ptr! dd null-byte 1024
+probe hid/get_indexed_string dev 2 dd 255
+dump-hex as byte-ptr! dd 
