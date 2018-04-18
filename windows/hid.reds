@@ -936,6 +936,83 @@ hid: context [
 		return b
 	]
 
+	set_nonblocking: func [
+		device 		[int-ptr!]
+		nonblock	[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid-device]
+	][
+		dev: as hid-device device
+		dev/blocking: either dev/blocking [false][true]
+		0
+	]
+
+	send_feature_report: func [
+		device		[int-ptr!]
+		data 		[c-string!]
+		length 		[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid-device]
+			res 	[logic!]
+	][
+		dev: as hid-device device
+		res: 	HidD_SetFeature 
+				dev/device-handle 
+				as int-ptr! data
+				length
+		unless res [
+			register-error dev "HidD_SetFeature"
+			return -1
+		]
+		length 
+	]
+
+	get_feature_report: func [
+		device 		[int-ptr!]
+		data 		[c-string!]
+		length 		[integer!]
+		return:		[integer!]
+		/local
+			dev 			[hid-device]
+			res 			[logic!]
+			bytes_returned	[integer!]
+			ol 				[overlapped-struct value]
+	][
+		bytes_returned: 0
+		dev: as hid-device device
+		set-memory as byte-ptr! ol null-byte size? overlapped-struct
+		res: 	DeviceIoControl
+				dev/device-handle
+				IOCTL_HID_GET_FEATURE
+				as byte-ptr! data 
+				length
+				as byte-ptr! data 
+				length 
+				:bytes_returned 
+				ol 
+		unless res [
+			if GetLastError <> ERROR_IO_PENDING [
+				register-error dev  "Send Feature Report DeviceIoControl"
+				return -1
+			]
+		]
+
+		res:	GetOverlappedResult 
+				dev/device-handle
+				ol
+				:bytes_returned
+				true
+		unless res [
+			register-error dev "Send Feature Report GetOverLappedResult"
+			return -1
+		]
+
+		bytes_returned: bytes_returned + 1
+		bytes_returned
+	]
+
 	close: func [
 		device	[int-ptr!]
 		/local
