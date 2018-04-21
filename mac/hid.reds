@@ -648,7 +648,7 @@ hid: context [
 		]
 	]
 	
-	get_serial_number: func [
+	get_serial_number_string: func [
 		device 		[int-ptr!]
 		buf 		[c-string!]
 		len 		[integer!]
@@ -670,8 +670,19 @@ hid: context [
 		device 		[int-ptr!]
 		buf 		[c-string!]
 		len 		[integer!]
+		return: 	[integer!]
 	][
-		get_string_property device as c-string! CFSTR(kIOHIDProductKey) buf len 	
+		return get_string_property device as c-string! CFSTR(kIOHIDProductKey) buf len 	
+	]
+
+	get_indexed_string: func [
+		device 			[int-ptr!]
+		string_index	[integer!]
+		string 			[c-string!]
+		maxlen 			[integer!]
+		return: 		[integer!]
+	][
+		0
 	]
 
 	;--implementation of wcsdup() for mac
@@ -820,7 +831,7 @@ hid: context [
 			cur_dev/path: either res = 0 [strdup path][strdup ""]
 	
 			;--serial number
-			get_serial_number dev buf BUF_LEN
+			get_serial_number_string dev buf BUF_LEN
 			cur_dev/serial-number: dup_wcs buf
 			;--manufacturer and product strings
 			get_manufacturer_string dev buf BUF_LEN
@@ -1360,14 +1371,16 @@ hid: context [
 			len 	[integer!]
 			res 	[integer!]
 	][
+		dev: as hid-device device
+		len: 0
 		if dev/disconnected <> 0 [
 			return -1
 		]
 		res: 	IOHIDDeviceGetReport 
 				dev/device_handle
 				2
-				data/1
-				data 
+				as integer! data/1
+				as byte-ptr! data 
 				:len 
 		either res = 0 [
 			return len 
@@ -1380,7 +1393,10 @@ hid: context [
 		device 		[int-ptr!]
 		nonblock	[integer!]
 		return: 	[integer!]
+		/local
+			dev 	[hid-device]
 	][	
+		dev: as hid-device device
 		dev/blocking: either nonblock <> 0 [0][nonblock]
 		0
 	]
