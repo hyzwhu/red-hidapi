@@ -22,6 +22,7 @@ hid: context [
 	#define kCFStringEncodingASCII				00000600h
 	#define kIOHIDReportTypeOutput 				1 
 	#define	ETIMEDOUT							60
+	#define kIOHIDReportTypeFeature 			2
 	
 	
 	hid_mgr: as int-ptr! 0
@@ -307,6 +308,14 @@ hid: context [
 				device 			[int-ptr!]
 				runloop			[int-ptr!]
 				runLoopMode		[int-ptr!]
+			]
+			IOHIDDeviceGetReport: "IOHIDDeviceGetReport" [
+				device 			[int-ptr!]
+				report_type 	[integer!]
+				report_id 		[integer!]
+				report 			[byte-ptr!]
+				p_reportlength	[int-ptr!]
+				return: 		[integer!]
 			]
 		]
 		"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation" cdecl [
@@ -1324,6 +1333,56 @@ hid: context [
 		pthread_mutex_unlock :dev/mutex
 		CFRelease dev/device_handle
 		free_hid_device dev 
+	]
+
+	send_feature_report: func [
+		device 		[int-ptr!]
+		data 		[c-string!]
+		length		[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid-device]
+	][
+		dev: as hid-device device
+		set_report 	dev
+					kIOHIDReportTypeFeature
+					as byte-ptr! data 
+					length
+	]
+
+	get_feature_report: func [
+		device 		[int-ptr!]
+		data 		[c-string!]
+		length		[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid-device]
+			len 	[integer!]
+			res 	[integer!]
+	][
+		if dev/disconnected <> 0 [
+			return -1
+		]
+		res: 	IOHIDDeviceGetReport 
+				dev/device_handle
+				2
+				data/1
+				data 
+				:len 
+		either res = 0 [
+			return len 
+		][
+			return -1 
+		]
+	]
+
+	set_nonblocking: func [
+		device 		[int-ptr!]
+		nonblock	[integer!]
+		return: 	[integer!]
+	][	
+		dev/blocking: either nonblock <> 0 [0][nonblock]
+		0
 	]
 	
 	free_hid_device: func [
