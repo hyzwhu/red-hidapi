@@ -856,7 +856,9 @@ hid: context [
 					dev/input-report-length 
 					:bytes-read 
 					:dev/ol
+?? res 
 			unless res [
+				probe "hello"
 				if GetLastError <> ERROR_IO_PENDING [
 					;--ReadFile() has failed. Clean up and return error.
 					CancelIo dev/device-handle
@@ -880,7 +882,7 @@ hid: context [
 				as overlapped-struct :dev/ol 
 				:bytes-read 
 				true
-
+?? res 
 		;--set pending back to false
 		dev/read-pending: false
 
@@ -896,6 +898,7 @@ hid: context [
 				][
 					copy-len: length
 				]
+probe "copy memory1"
 				copy-memory data 
 				((as byte-ptr! dev/read-buf) + 1) copy-len
 			][
@@ -906,10 +909,11 @@ hid: context [
 				][
 					copy-len: length
 				]
+probe "copy memory"
 				copy-memory data as byte-ptr! dev/read-buf copy-len
 			]
 		]
-		if res = false [
+		unless res [
 			register-error dev "GetOverlappedResult"
 			return -1
 		]
