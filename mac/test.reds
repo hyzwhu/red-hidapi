@@ -57,7 +57,7 @@ hid/write dev data size? data
 
 dd1: allocate 1024
 set-memory dd1 null-byte 1024
-probe hid/read-timeout dev dd1 1024 3000
+probe hid/read dev dd1 1024 
 ; probe hid/read dev dd 1024
 dump-hex dd1 
 
