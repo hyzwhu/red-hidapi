@@ -355,6 +355,12 @@ hid: context [
 				[variadic]
 				return: 	[integer!]
 			]
+			wcsncmp: "wcsncmp" [
+				str1 		[c-string!]
+				str2 		[c-string!]
+				num 		[integer!]
+				return: 	[integer!]
+			]
 		]
 	]
 
