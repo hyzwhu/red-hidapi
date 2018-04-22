@@ -1204,10 +1204,10 @@ hid: context [
 	][
 		dev: as hid-device device
 		ms: either dev/blocking <> 0 [-1][0]
-		read_timeout device data length ms
+		read-timeout device data length ms
 	]
 
-	read_timeout: func [
+	read-timeout: func [
 		device 			[int-ptr!]
 		data 			[byte-ptr!]
 		length			[integer!]
@@ -1448,5 +1448,68 @@ hid: context [
 
 		;--free the structure itself
 		free as byte-ptr! dev 
+	]
+
+	red-get-manufacturer-string: func [
+		device 		[int-ptr!]
+		string		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid-device]		
+	][
+		dev: as hid-device device
+		return 	get_manufacturer_string
+				dev/device_handle
+				string
+				maxlen
+	]
+
+	red-get-product-number: func [
+		device 		[int-ptr!]
+		string		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid-device]		
+	][
+		dev: as hid-device device
+		return 	get_product_string
+				dev/device_handle
+				string
+				maxlen
+	]
+
+	red-get-serial-number-string: func [
+		device 		[int-ptr!]
+		string		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid-device]		
+	][
+		dev: as hid-device device
+		return 	get_serial_number_string
+				dev/device_handle
+				string
+				maxlen
+	]
+
+	red-get-indexed-string: func [
+		device 		[int-ptr!]
+		stringIndex [integer!]
+		string		[c-string!]
+		maxlen 		[integer!]
+		return: 	[integer!]
+		/local
+			dev 	[hid-device]		
+	][
+		0
+	]
+	
+	error: func [
+		device 		[int-ptr!]
+	][
+		null
 	]
 ]

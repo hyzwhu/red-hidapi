@@ -51,19 +51,19 @@ dump-hex dd1
 ;--test hid/get_string function--
 ;--get_manufacturer_string 
 dd: as c-string! allocate 1024
-probe hid/get_manufacturer_string dev dd 255
+probe hid/red-get-manufacturer-string dev dd 255
 dump-hex as byte-ptr! dd  
 
 ;--get_product_string
-probe hid/get_product_string dev dd 255 
+probe hid/red-get-product-number dev dd 255 
 dump-hex as byte-ptr! dd 
 
 ;--get_serial_string
-probe hid/get_serial_number_string dev dd 255
+probe hid/red-get-serial-number-string dev dd 255
 dump-hex as byte-ptr! dd 
 
 ;--get_indexed_string
-probe hid/get_indexed_string dev 2 dd 255
+probe hid/red-get-indexed-string dev 2 dd 255
 dump-hex as byte-ptr! dd 
 
 ;--close the dev 
