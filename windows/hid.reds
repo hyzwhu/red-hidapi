@@ -946,7 +946,7 @@ probe "copy memory"
 		return b
 	]
 
-	set_nonblocking: func [
+	set-nonblocking: func [
 		device 		[int-ptr!]
 		nonblock	[integer!]
 		return: 	[integer!]
@@ -958,7 +958,7 @@ probe "copy memory"
 		0
 	]
 
-	send_feature_report: func [
+	send-feature-report: func [
 		device		[int-ptr!]
 		data 		[c-string!]
 		length 		[integer!]
@@ -979,7 +979,7 @@ probe "copy memory"
 		length 
 	]
 
-	get_feature_report: func [
+	get-feature-report: func [
 		device 		[int-ptr!]
 		data 		[c-string!]
 		length 		[integer!]
@@ -1035,7 +1035,7 @@ probe "copy memory"
 		]
 	]
 
-	get_manufacturer_string: func [
+	red-get-manufacturer-string: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen 		[integer!]
@@ -1056,7 +1056,7 @@ probe "copy memory"
 		0
 	]
 
-	get_product_string: func [
+	red-get-product-string: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen 		[integer!]
@@ -1077,7 +1077,7 @@ probe "copy memory"
 		0
 	]
 
-	get_serial_number_string: func [
+	red-get-serial-number-string: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen 		[integer!]
@@ -1098,7 +1098,7 @@ probe "copy memory"
 		0
 	]
 
-	get_indexed_string: func [
+	red-get-indexed-string: func [
 		device 			[int-ptr!]
 		string-index	[integer!]
 		string 			[c-string!]
