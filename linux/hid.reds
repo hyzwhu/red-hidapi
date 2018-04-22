@@ -209,7 +209,8 @@ hid: context [
 			linux-close: "close" [
 				handle 		[int-ptr!]
 			]
-			_fstat32: "_fstat32" [
+			stat: "__fxstat" [
+				version 	[integer!]
 				file		[integer!]
 				restrict	[stat!]
 				return:		[integer!]
@@ -227,6 +228,13 @@ hid: context [
 				num 		[integer!]
 				return: 	[c-string!]
 			]
+
+			wcsncmp: "wcsncmp" [
+				str1 		[c-string!]
+				str2 		[c-string!]
+				num 		[integer!]
+				return: 	[integer!]
+			]
 		]
 		"libudev.so.1" cdecl[
 			udev_device_get_sysattr_value: "udev_device_get_sysattr_value" [
@@ -238,25 +246,25 @@ hid: context [
 	]
 
 
-	hid_device: alias struct! [
+	hid-device: alias struct! [
 		device_handle 			[integer!]
 		blocking 				[integer!]
-		uses_numbered_reports	[integer!]
+		uses-numbered-reports	[integer!]
 	]
 
-	new_hid_device: func [
-		return: 	[hid_device]
+	new-hid-device: func [
+		return: 	[hid-device]
 		/local
-			dev 		[hid_device]
+			dev 		[hid-device]
 	][
-		dev: as hid_device allocate size? hid_device
+		dev: as hid-device allocate size? hid-device
 		dev/device_handle: -1
 		dev/blocking: 1
-		dev/uses_numbered_reports: 0
+		dev/uses-numbered-reports: 0
 		dev 
 	]
 
-	utf8_to_wchar_t: func [
+	utf8-to-wchar-t: func [
 		utf8 		[c-string!]
 		return: 	[c-string!]
 		/local
@@ -288,17 +296,17 @@ hid: context [
 
 	;--get an atrribute value from a udev_device and return it as wchar_t
 	;--string the returned string must be freed with free（） when done
-	copy_udev_string: func [
+	copy-udev-string: func [
 		dev 		[int-ptr!] ;--udev_device
 		udev_name 	[c-string!] 
 		return: 	[c-string!]
 	][
-		utf8_to_wchar_t (udev_device_get_sysattr_value dev udev_name)	
+		utf8-to-wchar-t (udev_device_get_sysattr_value dev udev_name)	
 	]
 
 	;--uses_numered_reports return 1 if report_descriptor describes a device 
 	;--which contains numbered reports
-	uses_numbered_reports: func [
+	uses-numbered-reports: func [
 		report_descriptor 	[byte-ptr!]
 		size				[integer!]
 		return: 			[integer!]
@@ -341,7 +349,7 @@ hid: context [
 		0	
 	]
 
-	hid_init: func [
+	hid-init: func [
 		return: 	[integer!]
 		/local
 			locale	[byte-ptr!]
@@ -352,7 +360,7 @@ hid: context [
 		0
 	]
 
-	parse_uevent_info: func [
+	parse-uevent-info: func [
 		uevent 				[c-string!]
 		bus_type			[int-ptr!]
 		vendor_id			[int-ptr!]
@@ -449,7 +457,7 @@ hid: context [
 		root: null
 		cur_dev: null
 		prev_dev: null
-		hid_init
+		hid-init
 
 		;--create the udev object
 		udev: udev_new 
@@ -489,7 +497,7 @@ hid: context [
 				skip?: yes 
 			]
 			unless skip? [
-				result: parse_uevent_info 	
+				result: parse-uevent-info 	
 						(udev_device_get_sysattr_value hid_dev "uevent")
 						:bus_type
 						:dev_vid
@@ -533,7 +541,7 @@ hid: context [
 					cur_dev/id: dev_vid << 16 or dev_pid
 
 					;--serial number
-					cur_dev/serial-number: utf8_to_wchar_t serial_number_utf8
+					cur_dev/serial-number: utf8-to-wchar-t serial_number_utf8
 
 					;--release number
 					cur_dev/release-number: 0
@@ -563,11 +571,11 @@ hid: context [
 							]
 							unless skip1?[
 								;--manufacturer and product strings 
-								cur_dev/manufacturer-string: 	copy_udev_string 	
+								cur_dev/manufacturer-string: 	copy-udev-string 	
 																usb_dev
 																as c-string! device_string_names/1
 
-								cur_dev/product-string: copy_udev_string 	
+								cur_dev/product-string: copy-udev-string 	
 														usb_dev 
 														as c-string! device_string_names/2				 
 								;--release number
@@ -587,7 +595,7 @@ hid: context [
 						]
 						5 [
 							cur_dev/manufacturer-string: wcsdup ""
-							cur_dev/product-string: utf8_to_wchar_t product_name_utf8
+							cur_dev/product-string: utf8-to-wchar-t product_name_utf8
 					
 						]
 						default []
@@ -606,7 +614,7 @@ hid: context [
 		root 
 	]
 
-	free_enumeration: func [
+	free-enumeration: func [
 		devs 		[hid-device-info]
 		/local
 			d 		[hid-device-info]
@@ -633,7 +641,7 @@ hid: context [
 			devs 			[hid-device-info]
 			cur_dev			[hid-device-info]
 			path_to_open	[c-string!]
-			handle			[hid_device]
+			handle			[hid-device]
 			id 				[integer!]
 	][
 		path_to_open: null
@@ -658,24 +666,24 @@ hid: context [
 			cur_dev: cur_dev/next
 		]
 		if path_to_open <> null [
-			handle: open_path path_to_open
+			handle: open-path path_to_open
 		]
-		free_enumeration devs 
+		free-enumeration devs 
 		as int-ptr! handle		
 	]
 
-	open_path: func [
+	open-path: func [
 		path			[c-string!]
-		return: 		[hid_device]
+		return: 		[hid-device]
 		/local
-			dev 		[hid_device]
+			dev 		[hid-device]
 			res			[integer!]
 			desc_size	[integer!]
 			rpt_desc	[int-ptr!]
 	][
 		dev: null
-		hid_init
-		dev: new_hid_device
+		hid-init
+		dev: new-hid-device
 		res: 0 
 		desc_size: 0
 		;--open here
@@ -697,7 +705,7 @@ hid: context [
 			either res < 0 [
 				perror "HIDIOCGRDESC"
 			][
-				dev/uses_numbered_reports: 	uses_numbered_reports 	
+				dev/uses-numbered-reports: 	uses-numbered-reports 	
 											as byte-ptr! (rpt_desc + 1)
 											rpt_desc/1
 			]
@@ -714,28 +722,28 @@ hid: context [
 		length 		[integer!]
 		return: 	[integer!]
 		/local
-			dev 			[hid_device]
+			dev 			[hid-device]
 			bytes_written	[integer!]
 	][
-		dev: as hid_device device
+		dev: as hid-device device
 		bytes_written: linux-write dev/device_handle as c-string! data length
 		bytes_written
 	]
 
-	read_timeout: func [
+	read-timeout: func [
 		device 			[int-ptr!]
 		data 			[byte-ptr!]
 		length 			[integer!]
 		milliseconds	[integer!]
 		return: 		[integer!]
 		/local
-			dev 		[hid_device]
+			dev 		[hid-device]
 			bytes_read	[integer!]
 			ret 		[integer!]
 			fds 		[pollfd value]
 			errno 		[integer!]
 	][
-		dev: as hid_device device
+		dev: as hid-device device
 		if milliseconds >= 0 [
 			fds/fd: dev/device_handle
 			fds/events: 1 
@@ -765,37 +773,37 @@ hid: context [
 		length 			[integer!]	
 		return: 		[integer!]
 		/local
-			dev 		[hid_device]
+			dev 		[hid-device]
 			block? 		[integer!]
 	][	
-		 dev: as hid_device device
+		 dev: as hid-device device
 		 block?: either dev/blocking <> 0 [-1][0]
 ?? block?
-		 return read_timeout device data length block?
+		 return read-timeout device data length block?
 	]
 
-	set_nonblocking: func [
+	set-nonblocking: func [
 		device		[int-ptr!]
 		nonblock 	[integer!]
 		return: 	[integer!]
 		/local
-			dev 	[hid_device]
+			dev 	[hid-device]
 	][
-		dev: as hid_device device
+		dev: as hid-device device
 		dev/blocking: either nonblock = 0 [1][0]
 		0
 	]
 
-	send_feature_report: func [
+	send-feature-report: func [
 		device 		[int-ptr!]
 		data 		[byte-ptr!]
 		length		[integer!]
 		return: 	[integer!]
 		/local
 			res    	[integer!]
-			dev  	[hid_device]
+			dev  	[hid-device]
 	][
-		dev: as hid_device device
+		dev: as hid-device device
 		res: ioctl dev/device_handle HIDIOCSFEATURE(length) as int-ptr! data 
 		if res < 0 [
 			perror "ioctl (SFEATURE)"
@@ -803,16 +811,16 @@ hid: context [
 		res 
 	]
 
-	get_feature_report: func [
+	get-feature-report: func [
 		device 		[int-ptr!]
 		data 		[byte-ptr!]
 		length		[integer!]
 		return: 	[integer!]
 		/local
 			res 	[integer!]
-			dev 	[hid_device]
+			dev 	[hid-device]
 	][
-		dev: as hid_device device
+		dev: as hid-device device
 		res: ioctl dev/device_handle HIDIOCGFEATURE(length) as int-ptr! data 
 		if res < 0 [
 			perror "ioctl (GFEATURE)"
@@ -823,9 +831,9 @@ hid: context [
 	close: func [
 		device 		[int-ptr!]
 		/local
-			dev 	[hid_device]
+			dev 	[hid-device]
 	][
-		dev: as hid_device device
+		dev: as hid-device device
 		either dev = null [
 			probe "dev is null"
 		][
@@ -833,7 +841,7 @@ hid: context [
 			free as byte-ptr! dev 
 		]
 	]
-	get_device_string: func [
+	get-device-string: func [
 		device 		[int-ptr!]
 		key 		[integer!]
 		string		[c-string!]
@@ -848,7 +856,7 @@ hid: context [
 			ret 						[integer!]
 			serial_number_utf8			[c-string!]
 			product_name_utf8			[c-string!]
-			dev 						[hid_device]
+			dev 						[hid-device]
 			dev_vid 					[integer!]
 			dev_pid 					[integer!]
 			bus_type					[integer!]
@@ -859,7 +867,7 @@ hid: context [
 			serial_number_utf8_fake		[integer!]
 			product_name_utf8_fake		[integer!]
 	][
-		dev: as hid_device device
+		dev: as hid-device device
 		serial_number_utf8: null
 		product_name_utf8: null
 		serial_number_utf8_fake: 0
@@ -876,7 +884,7 @@ hid: context [
 		]
 
 		;--get the dev_t(major/minor numbers) from the file handle
-		ret: _fstat32 dev/device_handle s 
+		ret: stat 3 dev/device_handle s 
 		if -1 = ret [return ret ]
 
 		;--open a udev device from the dev_t,'c' means character device
@@ -887,7 +895,7 @@ hid: context [
 						"hid"
 						null
 			if hid_dev <> null [
-				ret: 	parse_uevent_info
+				ret: 	parse-uevent-info
 						(udev_device_get_sysattr_value hid_dev "uevent")
 						:bus_type
 						:dev_vid
@@ -948,46 +956,46 @@ hid: context [
 		ret 
 	]
 
-	get_manufacturer_string: func [
+	get-manufacturer-string: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen 		[integer!]
 		return: 	[integer!]
 	][
-		return 	get_device_string 
+		return 	get-device-string 
 				device
 				0
 				string
 				maxlen
 	]
 
-	get_product_string: func [
+	get-product-string: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen		[integer!]
 		return: 	[integer!]
 	][
-		return 	get_device_string 
+		return 	get-device-string 
 				device
 				1
 				string
 				maxlen
 	]
 
-	get_serial_number_String: func [
+	get-serial-number-String: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen 		[integer!]
 		return: 	[integer!]
 	][
-		return 	get_device_string
+		return 	get-device-string
 				device
 				2
 				string
 				maxlen
 	]
 
-	get_indexed_string: func [
+	get-indexed-string: func [
 		device 		[int-ptr!]
 		str_index	[integer!]
 		string 		[c-string!]
