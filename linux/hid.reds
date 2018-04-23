@@ -956,7 +956,7 @@ hid: context [
 		ret 
 	]
 
-	get-manufacturer-string: func [
+	red-get-manufacturer-string: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen 		[integer!]
@@ -969,7 +969,7 @@ hid: context [
 				maxlen
 	]
 
-	get-product-string: func [
+	red-get-product-string: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen		[integer!]
@@ -982,7 +982,7 @@ hid: context [
 				maxlen
 	]
 
-	get-serial-number-String: func [
+	red-get-serial-number-String: func [
 		device 		[int-ptr!]
 		string 		[c-string!]
 		maxlen 		[integer!]
@@ -995,7 +995,7 @@ hid: context [
 				maxlen
 	]
 
-	get-indexed-string: func [
+	red-get-indexed-string: func [
 		device 		[int-ptr!]
 		str_index	[integer!]
 		string 		[c-string!]
