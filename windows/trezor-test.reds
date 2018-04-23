@@ -12,15 +12,12 @@ while [as logic! cur-dev] [
     probe ["path:" cur-dev/path]
     print "serial-number:" 
     hid/wprintf cur-dev/serial-number
-dump-hex as byte-ptr! cur-dev/serial-number 
     probe " "
     print "manufacturer-string:" 
     hid/wprintf cur-dev/manufacturer-string
-dump-hex as byte-ptr! cur-dev/manufacturer-string
     probe " "
     print "product-string:" 
     hid/wprintf cur-dev/product-string
-dump-hex as byte-ptr! cur-dev/product-string
     probe " "
     probe ["release-number:" cur-dev/release-number]
     probe ["interface-number:" cur-dev/interface-number]
@@ -54,13 +51,17 @@ data: [
 	]
 	data2: [
 		#"U"   #"^(00)" #"2"        #"^(00)"
-		#"F"   #"^(00)" #" "    #"^(00)"
+		#"F"   #"^(00)" #" "    	#"^(00)"
 		#"I"   #"^(00)" #"n"   		#"^(00)"
 		#"t"   #"^(00)" #"e"   		#"^(00)"
 		#"r"   #"^(00)" #"f"   		#"^(00)"
 		#"a"   #"^(00)" #"c"   		#"^(00)"
 		#"e"   #"^(00)"
 	] 
+	data21: [
+		#"T"	#"^(00)"	#"R"	#"^(00)"
+		#"E"	#"^(00)"
+	]
 	data3: [
 		#"1"   #"^(00)" #"6"   #"^(00)"
 		#"8"   #"^(00)" #"7"   #"^(00)"
@@ -105,22 +106,18 @@ data: [
 	]
 ]
 
-probe "dump data1"	
-dump-hex data1 
-
 hid/write dev data size? data
 
 dd1: allocate 1024
 set-memory dd1 null-byte 1024
-probe hid/read-timeout dev dd1 1024 3000
-; probe hid/read dev dd1 1024
+;probe hid/read-timeout dev dd1 1024 3000
+probe hid/read dev dd1 1024
 dump-hex dd1 
 
 ;--test hid/get_string function--
 ;--get_manufacturer_string 
 dd: as c-string! allocate 1024
 probe hid/red-get-manufacturer-string dev dd 255
-dump-hex as byte-ptr! dd  
 either 0 = hid/wcsncmp as c-string! data1 dd 11  [
 	probe "get-manufacturer-string success"
 ][
@@ -129,8 +126,10 @@ either 0 = hid/wcsncmp as c-string! data1 dd 11  [
 
 ;--get_product_string
 probe hid/red-get-product-string dev dd 255 
-dump-hex as byte-ptr! dd 
-either 0 = hid/wcsncmp as c-string! data2 dd 6  [
+either any [
+	0 = hid/wcsncmp as c-string! data2 dd 6 
+	0 = hid/wcsncmp as c-string! data21 dd 3
+	] [
 	probe "get-product-string success"
 ][
 	probe "get-product-string fail"
@@ -138,7 +137,6 @@ either 0 = hid/wcsncmp as c-string! data2 dd 6  [
 
 ;--get_serial_string
 probe hid/red-get-serial-number-string dev dd 255
-dump-hex as byte-ptr! dd 
 either 0 = hid/wcsncmp as c-string! data3 dd 24  [
 	probe "get-serial-number-string success"
 ][
@@ -147,11 +145,24 @@ either 0 = hid/wcsncmp as c-string! data3 dd 24  [
 
 ;--get_indexed_string
 probe hid/red-get-indexed-string dev 2 dd 255
-dump-hex as byte-ptr! dd 
-
+either any [
+	0 = hid/wcsncmp as c-string! data2 dd 6 
+	0 = hid/wcsncmp as c-string! data21 dd 3
+	] [
+	probe "get-product-string success"
+][
+	probe "get-product-string fail"
+] 
 ;--close the dev 
 hid/close dev   
 ;--if not sure the dev had been closed, try the func below
 set-memory as byte-ptr! dd null-byte 1024
 probe hid/red-get-indexed-string dev 2 dd 255
-dump-hex as byte-ptr! dd 
+either any [
+	0 = hid/wcsncmp as c-string! data2 dd 6 
+	0 = hid/wcsncmp as c-string! data21 dd 3
+	] [
+	probe "get-product-string success"
+][
+	probe "get-product-string fail"
+]  

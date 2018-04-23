@@ -454,7 +454,8 @@ hid: context [
 
 	;--hid_enumerate function
 	enumerate: func [
-		id 		[integer!] ;vendor-id and product-id
+		vendor-id 		[integer!] ;vendor-id and product-id
+		product-id		[integer!]
 		return: [hid-device-info]
 		/local 
 			res 				[logic!]
@@ -488,7 +489,9 @@ hid: context [
 			len1 				[integer!]
 			skip1? 				[logic!]
 			skip2? 				[logic!]
+			id 					[integer!]
 	][	
+		id: product-id << 16 + vendor-id
 		;-- allocate mem for devinfo
 		root: null
 		cur-dev: null
@@ -709,7 +712,7 @@ hid: context [
 		path-to-open: null
 		handle: null
 		id: product-id * 65536 + vendor-id
-		devs: enumerate id
+		devs: enumerate vendor-id product-id
 		cur-dev: devs 
 		while [cur-dev <> null] [
 			if cur-dev/id = id [

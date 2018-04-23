@@ -12,7 +12,6 @@ while [as logic! cur-dev] [
     probe ["path:" cur-dev/path]
     print "serial-number:" 
     hid/wprintf cur-dev/serial-number
-	dump-hex as byte-ptr! cur-dev/serial-number 
     probe " "
     print "manufacturer-string:" 
     hid/wprintf cur-dev/manufacturer-string
@@ -28,8 +27,6 @@ while [as logic! cur-dev] [
 
 ;-- test hid/read and hid/write fuction--
 dev: declare int-ptr! 
-; dev: hid/open 0000534Ch 00000001h null 
-; product: false	;--open trezor
 dev: hid/open 00002C97h 00000001h null
 pro: true	;--open leger nano  s 
 
@@ -40,35 +37,86 @@ data: [
 	#"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)" #"^(00)"
 ] ;--data for leger nano s 
 
+#either OS = 'Windows [
+	data1: [
+		#"L"	#"^(00)"	#"e"   #"^(00)"
+		#"d"	#"^(00)"	#"g"   #"^(00)"
+		#"e"	#"^(00)"	#"r"   #"^(00)"
+	]
+	data2: [
+		#"N"		#"^(00)"	#"a"	#"^(00)"
+		#"n"		#"^(00)"	#"o"	#"^(00)"
+		#" "		#"^(00)"	#"S"	#"^(00)"
+	] 
+	data3: [
+		#"0"	#"^(00)"	#"0"	#"^(00)"
+		#"0"	#"^(00)"	#"1"	#"^(00)"
+	]
+][
+	data1: [
+		#"L"	#"^(00)"	#"^(00)"	#"^(00)"	#"e"   #"^(00)"	#"^(00)"	#"^(00)"
+		#"d"	#"^(00)"	#"^(00)"	#"^(00)"	#"g"   #"^(00)"	#"^(00)"	#"^(00)"
+		#"e"	#"^(00)"	#"^(00)"	#"^(00)"	#"r"   #"^(00)"	#"^(00)"	#"^(00)"
+	]
+	data2: [
+		#"N"		#"^(00)"	#"^(00)"	#"^(00)"	#"a"	#"^(00)"	#"^(00)"	#"^(00)"
+		#"n"		#"^(00)"	#"^(00)"	#"^(00)"	#"o"	#"^(00)"	#"^(00)"	#"^(00)"
+		#" "		#"^(00)"	#"^(00)"	#"^(00)"	#"^(00)"	#"^(00)"	#"S"	#"^(00)"	#"^(00)"	#"^(00)"
+	] 
+	data3: [
+		#"0"	#"^(00)"	#"^(00)"	#"^(00)"	#"0"	#"^(00)"	#"^(00)"	#"^(00)"
+		#"0"	#"^(00)"	#"^(00)"	#"^(00)"	#"1"	#"^(00)"	#"^(00)"	#"^(00)"
+	]
+]
+?? dev 
 hid/write dev data size? data
 
 dd1: allocate 1024
 set-memory dd1 null-byte 1024
-probe hid/read-timeout dev dd1 1024 3000
-; probe hid/read dev dd 1024
+;probe hid/read-timeout dev dd1 1024 3000
+probe hid/read dev dd1 1024
 dump-hex dd1 
 
 ;--test hid/get_string function--
 ;--get_manufacturer_string 
 dd: as c-string! allocate 1024
-probe hid/get_manufacturer_string dev dd 255
-dump-hex as byte-ptr! dd  
+probe hid/red-get-manufacturer-string dev dd 255
+either 0 = hid/wcsncmp as c-string! data1 dd 6  [
+	probe "get-manufacturer-string success"
+][
+	probe "get-manufacturer-string fail"
+] 
 
 ;--get_product_string
-probe hid/get_product_string dev dd 255 
-dump-hex as byte-ptr! dd 
+probe hid/red-get-product-string dev dd 255  
+either 0 = hid/wcsncmp as c-string! data2 dd 6 [
+	probe "get-product-string success"
+][
+	probe "get-product-string fail"
+] 
 
 ;--get_serial_string
-probe hid/get_serial_number_string dev dd 255
-dump-hex as byte-ptr! dd 
+probe hid/red-get-serial-number-string dev dd 255
+either 0 = hid/wcsncmp as c-string! data3 dd 4  [
+	probe "get-serial-number-string success"
+][
+	probe "get-serial-number-string fail"
+] 
 
 ;--get_indexed_string
-probe hid/get_indexed_string dev 2 dd 255
-dump-hex as byte-ptr! dd 
-
+probe hid/red-get-indexed-string dev 2 dd 255  ;--get product string
+either 0 = hid/wcsncmp as c-string! data2 dd 6 [
+	probe "get-product-string success"
+][
+	probe "get-product-string fail"
+] 
 ;--close the dev 
 hid/close dev   
 ;--if not sure the dev had been closed, try the func below
 set-memory as byte-ptr! dd null-byte 1024
-probe hid/get_indexed_string dev 2 dd 255
-dump-hex as byte-ptr! dd 
+probe hid/red-get-indexed-string dev 2 dd 255
+either 0 = hid/wcsncmp as c-string! data2 dd 6 [
+	probe "get-product-string success"
+][
+	probe "get-product-string fail"
+] 
