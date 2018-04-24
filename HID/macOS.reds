@@ -1414,7 +1414,7 @@ hid: context [
 		]
 	]
 
-	set_nonblocking: func [
+	set-nonblocking: func [
 		device 		[int-ptr!]
 		nonblock	[integer!]
 		return: 	[integer!]
@@ -1477,7 +1477,7 @@ hid: context [
 				maxlen
 	]
 
-	red-get-product-number: func [
+	red-get-product-string: func [
 		device 		[int-ptr!]
 		string		[c-string!]
 		maxlen 		[integer!]
