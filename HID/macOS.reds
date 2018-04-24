@@ -66,19 +66,24 @@ hid: context [
 		length 		[integer!]
 	]
 
-	pthread_cond_t: alias struct! [
+	pthread_cond_t: alias struct! [ ;--size is 48
 		__sig       [integer!]
-		opaque1     [integer!]	;opaque size =24
+		opaque1     [integer!]	
 		opaque2		[integer!]
 		opaque3     [integer!]
 		opaque4		[integer!]   
 		opaque5     [integer!]
-		opaque6		[integer!]    	       
+		opaque6		[integer!]
+		opaque7     [integer!]	
+		opaque8		[integer!]
+		opaque9     [integer!]
+		opaque10	[integer!]   
+		opaque11    [integer!]     	       
 	]
 
-	pthread_mutex_t: alias struct! [
+	pthread_mutex_t: alias struct! [ ;--size is 64
 		__sig 		[integer!]
-		opaque1     [integer!]	;opaque size =40
+		opaque1     [integer!]	
 		opaque2		[integer!]
 		opaque3     [integer!]
 		opaque4		[integer!]   
@@ -87,7 +92,12 @@ hid: context [
 		opaque7     [integer!]
 		opaque8		[integer!]   
 		opaque9     [integer!]
-		opaque10	[integer!]     
+		opaque10	[integer!] 
+		opaque11	[integer!] 
+		opaque12	[integer!] 
+		opaque13	[integer!] 
+		opaque14	[integer!]
+		opaque15	[integer!]      
 	]	
 	pthread_barrier_t: alias struct! [
 		mutex       [pthread_mutex_t value]
