@@ -155,6 +155,12 @@ hid: context [
 				s2 			[c-string!]
 				return: 	[integer!]
 			]
+			strncmp: "strncmp" [
+				Str1 		[c-string!]
+				Str2 		[c-string!]
+				num 		[integer!]
+				return: 	[integer!]
+			]
 			sscanf: "sscanf" [
 				[variadic]
 				return: 	[integer!]

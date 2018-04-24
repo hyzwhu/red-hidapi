@@ -1241,6 +1241,7 @@ hid: context [
 			res 		[integer!]
 			ts 			[timespec! value]
 			tv 			[timeval! value]
+			ms 			[integer!]
 	][
 		dev: as hid-device device
 		bytes_read: -1
@@ -1268,7 +1269,19 @@ hid: context [
 		]
 		case [ 
 			milliseconds = -1 [
-				res: cond_wait dev :dev/condition :dev/mutex
+				;res: cond_wait dev :dev/condition :dev/mutex
+				;--because the cond_wait func is not stable, particular result of trezor test
+				;--use the cond_timedwait func replace it and set  ms(milliseconds) very big
+				gettimeofday  tv  0
+				ms: EFFFFFFFh
+				TIMEVAL_TO_TIMESPEC tv ts 
+				ts/sec: ts/sec + (ms / 1000)
+				ts/nsec: ts/nsec + ((ms % 1000) * 1000000)
+				if ts/nsec >= 1000000000 [
+					ts/sec: ts/sec + 1
+					ts/nsec: ts/nsec - 1000000000
+				]
+				res: cond_timedwait dev :dev/condition :dev/mutex ts 
 				either res = 0 [
 					bytes_read: return_data dev data length
 				][
@@ -1285,7 +1298,6 @@ hid: context [
 					ts/nsec: ts/nsec - 1000000000
 				]
 				res: cond_timedwait dev :dev/condition :dev/mutex ts 
-				?? res
 				case [
 					res = 0 [bytes_read: return_data dev data length]
 					res = ETIMEDOUT [bytes_read: 0]
@@ -1300,21 +1312,21 @@ hid: context [
 		;--unlock section
 	]
 
-	cond_wait: func [
-		dev 		[hid-device]
-		cond 		[int-ptr!]
-		mutex 		[int-ptr!]
-		return: 	[integer!]
-		/local
-			res 	[integer!]
-	][
-		while [dev/input_reports = null] [
-			res: pthread_cond_wait cond mutex 
-			if res <> 0 [return res ]
-			if  any [dev/shutdown_thread <> 0 dev/disconnected <> 0][return -1]
-		]
-		0	
-	]
+	; cond_wait: func [
+	; 	dev 		[hid-device]
+	; 	cond 		[int-ptr!]
+	; 	mutex 		[int-ptr!]
+	; 	return: 	[integer!]
+	; 	/local
+	; 		res 	[integer!]
+	; ][
+	; 	while [dev/input_reports = null] [
+	; 		res: pthread_cond_wait cond mutex 
+	; 		if res <> 0 [return res ]
+	; 		if  any [dev/shutdown_thread <> 0 dev/disconnected <> 0][return -1]
+	; 	]
+	; 	0	
+	; ]
 
 	cond_timedwait: func [
 		dev 		[hid-device]
