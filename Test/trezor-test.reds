@@ -176,9 +176,9 @@ either any [
 	0 = hid/wcsncmp as c-string! data2 dd 6 
 	0 = hid/wcsncmp as c-string! data21 dd 3
 	] [
-	probe "get-product-string success"
-][
 	probe "get-product-string fail"
+][
+	probe "get-product-string success"
 ] 
 ;--close the dev 
 hid/close dev   
@@ -189,7 +189,7 @@ either any [
 	0 = hid/wcsncmp as c-string! data2 dd 6 
 	0 = hid/wcsncmp as c-string! data21 dd 3
 	] [
-	probe "get-product-string success"
-][
 	probe "get-product-string fail"
+][
+	probe "get-product-string success"
 ]  

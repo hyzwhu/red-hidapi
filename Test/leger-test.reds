@@ -129,9 +129,9 @@ either 0 = hid/wcsncmp as c-string! data3 dd 4  [
 ;--get_indexed_string
 probe hid/red-get-indexed-string dev 2 dd 255  ;--get product string
 either 0 = hid/wcsncmp as c-string! data2 dd 6 [
-	probe "get-product-string success"
-][
 	probe "get-product-string fail"
+][
+	probe "get-product-string success"
 ] 
 ;--close the dev 
 hid/close dev   
@@ -139,7 +139,8 @@ hid/close dev
 set-memory as byte-ptr! dd null-byte 1024
 probe hid/red-get-indexed-string dev 2 dd 255
 either 0 = hid/wcsncmp as c-string! data2 dd 6 [
-	probe "get-product-string success"
-][
 	probe "get-product-string fail"
-] 
+][
+	probe "get-product-string success"
+]
+ 
